@@ -1,13 +1,9 @@
 #include "Addition.h"
-#include <immintrin.h>
+#include "../../Core/CPU/SIMD.h"
 #include <stdint.h>
 
-#if defined(__GNUC__) || defined(__clang__)
-#define TARGET_AVX2 __attribute__((target("avx2")))
-#define TARGET_SSE2 __attribute__((target("sse2")))
-#else
-#define TARGET_AVX2
-#define TARGET_SSE2
+#ifdef COMPILER_X86
+#include <immintrin.h>
 #endif
 
 // scalar fallback. no SIMD. works on anything. grandma's Pentium included.
@@ -19,8 +15,9 @@ void add_scalar(CalculatorState* state, const double* a, const double* b, double
 }
 
 // SSE2: 128-bit registers, 2 doubles per instruction. minimum x86_64 baseline.
-void add_sse(CalculatorState* state, const double* a, const double* b, double* result, uint32_t count) {
+TARGET_SSE2 void add_sse(CalculatorState* state, const double* a, const double* b, double* result, uint32_t count) {
     (void)state;
+#ifdef COMPILER_X86
     uint32_t i = 0;
     if ((((uintptr_t)a | (uintptr_t)b | (uintptr_t)result) & 15) == 0) {
         for (; i + 1 < count; i += 2) {
@@ -41,6 +38,9 @@ void add_sse(CalculatorState* state, const double* a, const double* b, double* r
     for (; i < count; ++i) {
         result[i] = a[i] + b[i];
     }
+#else
+    add_scalar(state, a, b, result, count);
+#endif
 }
 
 // AVX2: 256-bit registers, 4 doubles per instruction. twice the throughput of SSE2.
@@ -48,6 +48,7 @@ void add_sse(CalculatorState* state, const double* a, const double* b, double* r
 // don't go straight to scalar for the 2-element tail -- wastes half a vector unit.
 TARGET_AVX2 void add_avx2(CalculatorState* state, const double* a, const double* b, double* result, uint32_t count) {
     (void)state;
+#ifdef COMPILER_X86
     uint32_t i = 0;
     if ((((uintptr_t)a | (uintptr_t)b | (uintptr_t)result) & 31) == 0) {
         for (; i + 3 < count; i += 4) {
@@ -83,6 +84,9 @@ TARGET_AVX2 void add_avx2(CalculatorState* state, const double* a, const double*
     for (; i < count; ++i) {
         result[i] = a[i] + b[i];
     }
+#else
+    add_scalar(state, a, b, result, count);
+#endif
 }
 
 // runtime dispatch. checked once at init via CPUID, zero branch overhead after that.

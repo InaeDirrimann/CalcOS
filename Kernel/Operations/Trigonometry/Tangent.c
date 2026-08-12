@@ -2,16 +2,9 @@
 #include "Sine.h"
 #include "Cosine.h"
 #include "../Arithmetic/Division.h"
+#include "../../Core/CPU/SIMD.h"
 
 #define CHUNK_SIZE 64
-
-#if defined(__GNUC__) || defined(__clang__)
-#define TARGET_AVX2 __attribute__((target("avx2")))
-#define TARGET_SSE2 __attribute__((target("sse2")))
-#else
-#define TARGET_AVX2
-#define TARGET_SSE2
-#endif
 
 void tan_scalar(CalculatorState* state, const double* a, double* result, uint32_t count) {
     double sin_buf[CHUNK_SIZE];

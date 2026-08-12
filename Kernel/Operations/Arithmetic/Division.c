@@ -1,21 +1,11 @@
 #include "Division.h"
+#include "../../Core/CPU/SIMD.h"
 
-#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+#ifdef COMPILER_X86
 #include <immintrin.h>
-#define COMPILER_X86
 #endif
-
-#if defined(__ARM_NEON) || defined(__aarch64__) || defined(_M_ARM) || defined(_M_ARM64)
+#ifdef COMPILER_ARM
 #include <arm_neon.h>
-#define COMPILER_ARM
-#endif
-
-#if defined(__GNUC__) || defined(__clang__)
-#define TARGET_AVX2 __attribute__((target("avx2")))
-#define TARGET_SSE2 __attribute__((target("sse2")))
-#else
-#define TARGET_AVX2
-#define TARGET_SSE2
 #endif
 
 // scalar fallback: b==0 produces NaN, not a crash.
@@ -34,7 +24,7 @@ void div_scalar(CalculatorState* state, const double* a, const double* b, double
 // SSE2 division with branchless zero-lane replacement.
 // mask where vb==0, substitute 1.0 in those lanes so the division doesn't trap,
 // then blend NaN over the result in those same lanes.
-void div_sse(CalculatorState* state, const double* a, const double* b, double* result, uint32_t count) {
+TARGET_SSE2 void div_sse(CalculatorState* state, const double* a, const double* b, double* result, uint32_t count) {
 #ifdef COMPILER_X86
     uint32_t i = 0;
     __m128d v_zero = _mm_setzero_pd();

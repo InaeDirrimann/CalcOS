@@ -1,4 +1,5 @@
 #include "CPUID.h"
+#include "SIMD.h"
 #if defined(_MSC_VER)
 #include <intrin.h>
 #endif
@@ -7,15 +8,27 @@ void cpu_detect_features(CPUFeatures* features) {
     if (!features) return;
 
     // HOST_APP guard: can't run CPUID inline asm on macOS/ARM/CI.
-    // compiler defines are good enough -- we're not bare-metal here.
+    // x86_64 ABI guarantees SSE2 minimum, NOT SSE3/SSE4.1/AVX -- those must be
+    // confirmed at runtime or left false so no kernel dispatches onto
+    // instructions the CPU doesn't support.
 #ifdef HOST_APP
     features->has_sse  = true;   // x86_64 ABI guarantees SSE2 minimum
     features->has_sse2 = true;
-    features->has_sse3 = true;
-    features->has_sse4_1 = true;
-    features->has_avx  = false;  // don't assume AVX, old VMs won't have it
+    features->has_sse3 = false;
+    features->has_sse4_1 = false;
+    features->has_avx  = false;
     features->has_avx2 = false;
     features->has_fma  = false;
+#if defined(COMPILER_X86) && (defined(__GNUC__) || defined(__clang__))
+    // GCC/Clang runtime probe, no inline asm needed. Confirms each feature
+    // against the actual host before any SIMD kernel gets dispatched.
+    __builtin_cpu_init();
+    if (__builtin_cpu_supports("sse3"))   features->has_sse3 = true;
+    if (__builtin_cpu_supports("sse4.1")) features->has_sse4_1 = true;
+    if (__builtin_cpu_supports("avx"))    features->has_avx = true;
+    if (__builtin_cpu_supports("avx2"))   features->has_avx2 = true;
+    if (__builtin_cpu_supports("fma"))    features->has_fma = true;
+#endif
 #if defined(__aarch64__) || defined(__ARM_NEON)
     features->has_neon = true;
 #endif

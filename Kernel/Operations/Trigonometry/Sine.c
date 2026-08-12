@@ -1,27 +1,15 @@
 #include "Sine.h"
+#include "../../Core/CPU/SIMD.h"
 
-#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+#ifdef COMPILER_X86
 #include <immintrin.h>
-#define COMPILER_X86
 #endif
-
-#if defined(__ARM_NEON) || defined(__aarch64__) || defined(_M_ARM) || defined(_M_ARM64)
+#ifdef COMPILER_ARM
 #include <arm_neon.h>
-#define COMPILER_ARM
 #endif
 
 #define PI 3.14159265358979323846
 #define INV_PI 0.31830988618379067154
-
-#if defined(__GNUC__) || defined(__clang__)
-#define TARGET_AVX2 __attribute__((target("avx2")))
-#define TARGET_SSE2 __attribute__((target("sse2")))
-#define TARGET_SSE4_1 __attribute__((target("sse4.1")))
-#else
-#define TARGET_AVX2
-#define TARGET_SSE2
-#define TARGET_SSE4_1
-#endif
 
 static inline double approx_sin_scalar(double x) {
     double k_d = (double)((int64_t)(x * INV_PI + (x >= 0.0 ? 0.5 : -0.5)));
@@ -163,11 +151,11 @@ void sin_neon(CalculatorState* state, const double* a, double* result, uint32_t 
 
         // eval polynomial:
         float64x2_t vy = vmulq_n_f64(vz2, -2.50521083854417e-8);
-        vy = vmulq_f64(vz2, vaddq_n_f64(vy, 0.00000275573192239859));
-        vy = vmulq_f64(vz2, vaddq_n_f64(vy, -0.0001984126984126984));
-        vy = vmulq_f64(vz2, vaddq_n_f64(vy, 0.008333333333333333));
-        vy = vmulq_f64(vz2, vaddq_n_f64(vy, -0.16666666666666666));
-        vy = vmulq_f64(vxr, vaddq_n_f64(vy, 1.0));
+        vy = vmulq_f64(vz2, vaddq_f64(vy, vdupq_n_f64(0.00000275573192239859)));
+        vy = vmulq_f64(vz2, vaddq_f64(vy, vdupq_n_f64(-0.0001984126984126984)));
+        vy = vmulq_f64(vz2, vaddq_f64(vy, vdupq_n_f64(0.008333333333333333)));
+        vy = vmulq_f64(vz2, vaddq_f64(vy, vdupq_n_f64(-0.16666666666666666)));
+        vy = vmulq_f64(vxr, vaddq_f64(vy, vdupq_n_f64(1.0)));
 
         // sign correction:
         int64x2_t vi_k = vcvtq_s64_f64(v_k);

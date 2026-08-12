@@ -105,32 +105,44 @@ int main(void) {
     {
         clock_t t0 = clock();
         int reps = 10000;
+        const char* kernel;
         if (feats.has_avx2) {
             for (int i = 0; i < reps; i++) add_avx2(&state, va, vb, vr, N);
-        } else {
+            kernel = "avx2";
+        } else if (feats.has_sse2) {
             for (int i = 0; i < reps; i++) add_sse(&state, va, vb, vr, N);
+            kernel = "sse";
+        } else {
+            for (int i = 0; i < reps; i++) add_scalar(&state, va, vb, vr, N);
+            kernel = "scalar";
         }
         clock_t t1 = clock();
         double ms = (double)(t1 - t0) * 1000.0 / CLOCKS_PER_SEC;
         double doubles_per_sec = (double)reps * N / (ms / 1000.0);
         double gflops = doubles_per_sec / 1e9;
         printf("  add_%s: %.2f BILLION doubles/sec (%.3f GFlop/s)\n",
-               feats.has_avx2 ? "avx2" : "sse", gflops, gflops);
+               kernel, gflops, gflops);
     }
     {
         clock_t t0 = clock();
         int reps = 10000;
+        const char* kernel;
         if (feats.has_avx2) {
             for (int i = 0; i < reps; i++) mul_avx2(&state, va, vb, vr, N);
-        } else {
+            kernel = "avx2";
+        } else if (feats.has_sse2) {
             for (int i = 0; i < reps; i++) mul_sse(&state, va, vb, vr, N);
+            kernel = "sse";
+        } else {
+            for (int i = 0; i < reps; i++) mul_scalar(&state, va, vb, vr, N);
+            kernel = "scalar";
         }
         clock_t t1 = clock();
         double ms = (double)(t1 - t0) * 1000.0 / CLOCKS_PER_SEC;
         double doubles_per_sec = (double)reps * N / (ms / 1000.0);
         double gflops = doubles_per_sec / 1e9;
         printf("  mul_%s: %.2f BILLION doubles/sec (%.3f GFlop/s)\n",
-               feats.has_avx2 ? "avx2" : "sse", gflops, gflops);
+               kernel, gflops, gflops);
     }
 
     (void)sink; // prevent dead-code elim
