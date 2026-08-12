@@ -469,16 +469,29 @@ static double local_acos(double x) {
 
 static double local_atan(double x) {
     double abs_x = x < 0.0 ? -x : x;
-    double res;
-    if (abs_x <= 1.0) {
-        double x2 = abs_x * abs_x;
-        res = abs_x * (1.0 + x2 * (-0.3333333333333333 + x2 * (0.2 + x2 * (-0.14285714285714285 + x2 * (0.1111111111111111 + x2 * -0.09090909090909091)))));
-    } else {
-        double inv_x = 1.0 / abs_x;
-        double inv_x2 = inv_x * inv_x;
-        double atan_inv = inv_x * (1.0 + inv_x2 * (-0.3333333333333333 + inv_x2 * (0.2 + inv_x2 * (-0.14285714285714285 + inv_x2 * (0.1111111111111111 + inv_x2 * -0.09090909090909091)))));
-        res = PI / 2.0 - atan_inv;
+    // Reduction pivots: tan(PI/6) = 1/sqrt(3), tan(PI/12) = 2 - sqrt(3).
+    // atan(a) - atan(b) = atan((a - b) / (1 + a*b)) keeps the series argument
+    // bounded by tan(PI/12) ~ 0.268, where 7 terms are accurate to ~1e-11.
+    const double c1 = 0.5773502691896257645091487805;
+    const double c2 = 0.2679491924311227064725536585;
+    bool reciprocal = false;
+    if (abs_x > 1.0) {
+        reciprocal = true;   // atan(x) = PI/2 - atan(1/x), pull the argument below 1
+        abs_x = 1.0 / abs_x;
     }
+    double offset = 0.0;
+    if (abs_x > c2) {
+        if (abs_x > c1) {
+            offset = PI / 6.0;                    // atan(x) = PI/6 + atan((x - c1)/(1 + c1*x))
+            abs_x = (abs_x - c1) / (1.0 + c1 * abs_x);
+        } else {
+            offset = PI / 12.0;                   // atan(x) = PI/12 + atan((x - c2)/(1 + c2*x))
+            abs_x = (abs_x - c2) / (1.0 + c2 * abs_x);
+        }
+    }
+    double x2 = abs_x * abs_x;
+    double series = abs_x * (1.0 + x2 * (-0.3333333333333333 + x2 * (0.2 + x2 * (-0.14285714285714285 + x2 * (0.1111111111111111 + x2 * (-0.09090909090909091 + x2 * (0.07692307692307693 + x2 * -0.06666666666666667)))))));
+    double res = reciprocal ? (PI / 2.0 - (offset + series)) : (offset + series);
     return x < 0.0 ? -res : res;
 }
 
