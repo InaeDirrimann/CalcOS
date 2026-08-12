@@ -167,7 +167,22 @@ double calc_median(double* arr, uint32_t len) {
     }
 }
 
-TARGET_AVX2 double calc_variance_with_mean(const double* arr, uint32_t len, double mean) {
+static TARGET_AVX2 uint32_t calc_variance_with_mean_avx2(const double* arr, uint32_t len, double mean, double* sum_sq_diff) {
+    uint32_t i = 0;
+    __m256d vmean = _mm256_set1_pd(mean);
+    __m256d vsum_sq = _mm256_setzero_pd();
+    for (; i + 3 < len; i += 4) {
+        __m256d val = _mm256_loadu_pd(&arr[i]);
+        __m256d diff = _mm256_sub_pd(val, vmean);
+        vsum_sq = _mm256_add_pd(vsum_sq, _mm256_mul_pd(diff, diff));
+    }
+    double temp[4];
+    _mm256_storeu_pd(temp, vsum_sq);
+    *sum_sq_diff += temp[0] + temp[1] + temp[2] + temp[3];
+    return i;
+}
+
+double calc_variance_with_mean(const double* arr, uint32_t len, double mean) {
     double sum_sq_diff = 0.0;
     uint32_t i = 0;
     const CPUFeatures* features = get_cpu_features();
@@ -175,16 +190,7 @@ TARGET_AVX2 double calc_variance_with_mean(const double* arr, uint32_t len, doub
 #ifdef COMPILER_X86
     (void)features;
     if (features->has_avx2) {
-        __m256d vmean = _mm256_set1_pd(mean);
-        __m256d vsum_sq = _mm256_setzero_pd();
-        for (; i + 3 < len; i += 4) {
-            __m256d val = _mm256_loadu_pd(&arr[i]);
-            __m256d diff = _mm256_sub_pd(val, vmean);
-            vsum_sq = _mm256_add_pd(vsum_sq, _mm256_mul_pd(diff, diff));
-        }
-        double temp[4];
-        _mm256_storeu_pd(temp, vsum_sq);
-        sum_sq_diff += temp[0] + temp[1] + temp[2] + temp[3];
+        i = calc_variance_with_mean_avx2(arr, len, mean, &sum_sq_diff);
     } else if (features->has_sse2) {
         __m128d vmean = _mm_set1_pd(mean);
         __m128d vsum_sq = _mm_setzero_pd();
@@ -212,7 +218,25 @@ double calc_variance(const double* arr, uint32_t len) {
     return calc_variance_with_mean(arr, len, mean);
 }
 
-TARGET_AVX2 double calc_covariance_with_means(const double* x_arr, const double* y_arr, uint32_t len, double mean_x, double mean_y) {
+static TARGET_AVX2 uint32_t calc_covariance_with_means_avx2(const double* x_arr, const double* y_arr, uint32_t len, double mean_x, double mean_y, double* sum_coproduct) {
+    uint32_t i = 0;
+    __m256d vmean_x = _mm256_set1_pd(mean_x);
+    __m256d vmean_y = _mm256_set1_pd(mean_y);
+    __m256d vsum_coprod = _mm256_setzero_pd();
+    for (; i + 3 < len; i += 4) {
+        __m256d vx = _mm256_loadu_pd(&x_arr[i]);
+        __m256d vy = _mm256_loadu_pd(&y_arr[i]);
+        __m256d diff_x = _mm256_sub_pd(vx, vmean_x);
+        __m256d diff_y = _mm256_sub_pd(vy, vmean_y);
+        vsum_coprod = _mm256_add_pd(vsum_coprod, _mm256_mul_pd(diff_x, diff_y));
+    }
+    double temp[4];
+    _mm256_storeu_pd(temp, vsum_coprod);
+    *sum_coproduct += temp[0] + temp[1] + temp[2] + temp[3];
+    return i;
+}
+
+double calc_covariance_with_means(const double* x_arr, const double* y_arr, uint32_t len, double mean_x, double mean_y) {
     double sum_coproduct = 0.0;
     uint32_t i = 0;
     const CPUFeatures* features = get_cpu_features();
@@ -220,19 +244,7 @@ TARGET_AVX2 double calc_covariance_with_means(const double* x_arr, const double*
 #ifdef COMPILER_X86
     (void)features;
     if (features->has_avx2) {
-        __m256d vmean_x = _mm256_set1_pd(mean_x);
-        __m256d vmean_y = _mm256_set1_pd(mean_y);
-        __m256d vsum_coprod = _mm256_setzero_pd();
-        for (; i + 3 < len; i += 4) {
-            __m256d vx = _mm256_loadu_pd(&x_arr[i]);
-            __m256d vy = _mm256_loadu_pd(&y_arr[i]);
-            __m256d diff_x = _mm256_sub_pd(vx, vmean_x);
-            __m256d diff_y = _mm256_sub_pd(vy, vmean_y);
-            vsum_coprod = _mm256_add_pd(vsum_coprod, _mm256_mul_pd(diff_x, diff_y));
-        }
-        double temp[4];
-        _mm256_storeu_pd(temp, vsum_coprod);
-        sum_coproduct += temp[0] + temp[1] + temp[2] + temp[3];
+        i = calc_covariance_with_means_avx2(x_arr, y_arr, len, mean_x, mean_y, &sum_coproduct);
     } else if (features->has_sse2) {
         __m128d vmean_x = _mm_set1_pd(mean_x);
         __m128d vmean_y = _mm_set1_pd(mean_y);
@@ -263,7 +275,35 @@ double calc_covariance(const double* x_arr, const double* y_arr, uint32_t len) {
     return calc_covariance_with_means(x_arr, y_arr, len, mean_x, mean_y);
 }
 
-TARGET_AVX2 void calc_var_covar_combined(const double* x_arr, const double* y_arr, uint32_t len,
+static TARGET_AVX2 uint32_t calc_var_covar_combined_avx2(const double* x_arr, const double* y_arr, uint32_t len,
+                              double mean_x, double mean_y,
+                              double* sum_sq_x, double* sum_sq_y, double* sum_coprod) {
+    uint32_t i = 0;
+    __m256d vmean_x = _mm256_set1_pd(mean_x);
+    __m256d vmean_y = _mm256_set1_pd(mean_y);
+    __m256d vsum_x = _mm256_setzero_pd();
+    __m256d vsum_y = _mm256_setzero_pd();
+    __m256d vsum_cp = _mm256_setzero_pd();
+    for (; i + 3 < len; i += 4) {
+        __m256d vx = _mm256_loadu_pd(&x_arr[i]);
+        __m256d vy = _mm256_loadu_pd(&y_arr[i]);
+        __m256d dx = _mm256_sub_pd(vx, vmean_x);
+        __m256d dy = _mm256_sub_pd(vy, vmean_y);
+        vsum_x = _mm256_add_pd(vsum_x, _mm256_mul_pd(dx, dx));
+        vsum_y = _mm256_add_pd(vsum_y, _mm256_mul_pd(dy, dy));
+        vsum_cp = _mm256_add_pd(vsum_cp, _mm256_mul_pd(dx, dy));
+    }
+    double tx[4], ty[4], tcp[4];
+    _mm256_storeu_pd(tx, vsum_x);
+    _mm256_storeu_pd(ty, vsum_y);
+    _mm256_storeu_pd(tcp, vsum_cp);
+    *sum_sq_x += tx[0] + tx[1] + tx[2] + tx[3];
+    *sum_sq_y += ty[0] + ty[1] + ty[2] + ty[3];
+    *sum_coprod += tcp[0] + tcp[1] + tcp[2] + tcp[3];
+    return i;
+}
+
+void calc_var_covar_combined(const double* x_arr, const double* y_arr, uint32_t len,
                              double mean_x, double mean_y,
                              double* out_var_x, double* out_var_y, double* out_cov) {
     double sum_sq_x = 0.0;
@@ -275,27 +315,7 @@ TARGET_AVX2 void calc_var_covar_combined(const double* x_arr, const double* y_ar
 #ifdef COMPILER_X86
     (void)features;
     if (features->has_avx2) {
-        __m256d vmean_x = _mm256_set1_pd(mean_x);
-        __m256d vmean_y = _mm256_set1_pd(mean_y);
-        __m256d vsum_x = _mm256_setzero_pd();
-        __m256d vsum_y = _mm256_setzero_pd();
-        __m256d vsum_cp = _mm256_setzero_pd();
-        for (; i + 3 < len; i += 4) {
-            __m256d vx = _mm256_loadu_pd(&x_arr[i]);
-            __m256d vy = _mm256_loadu_pd(&y_arr[i]);
-            __m256d dx = _mm256_sub_pd(vx, vmean_x);
-            __m256d dy = _mm256_sub_pd(vy, vmean_y);
-            vsum_x = _mm256_add_pd(vsum_x, _mm256_mul_pd(dx, dx));
-            vsum_y = _mm256_add_pd(vsum_y, _mm256_mul_pd(dy, dy));
-            vsum_cp = _mm256_add_pd(vsum_cp, _mm256_mul_pd(dx, dy));
-        }
-        double tx[4], ty[4], tcp[4];
-        _mm256_storeu_pd(tx, vsum_x);
-        _mm256_storeu_pd(ty, vsum_y);
-        _mm256_storeu_pd(tcp, vsum_cp);
-        sum_sq_x += tx[0] + tx[1] + tx[2] + tx[3];
-        sum_sq_y += ty[0] + ty[1] + ty[2] + ty[3];
-        sum_coprod += tcp[0] + tcp[1] + tcp[2] + tcp[3];
+        i = calc_var_covar_combined_avx2(x_arr, y_arr, len, mean_x, mean_y, &sum_sq_x, &sum_sq_y, &sum_coprod);
     } else if (features->has_sse2) {
         __m128d vmean_x = _mm_set1_pd(mean_x);
         __m128d vmean_y = _mm_set1_pd(mean_y);
@@ -375,7 +395,24 @@ double calc_percentile(double* arr, uint32_t len, double p) {
     return target[lo] + frac * (target[hi] - target[lo]);
 }
 
-TARGET_AVX2 double calc_skewness(const double* arr, uint32_t len) {
+static TARGET_AVX2 uint32_t calc_skewness_avx2(const double* arr, uint32_t len, double mean, double* sum_cube) {
+    uint32_t i = 0;
+    __m256d vmean      = _mm256_set1_pd(mean);
+    __m256d vsum_cube  = _mm256_setzero_pd();
+    for (; i + 3 < len; i += 4) {
+        __m256d val  = _mm256_loadu_pd(&arr[i]);
+        __m256d diff = _mm256_sub_pd(val, vmean);
+        __m256d d2   = _mm256_mul_pd(diff, diff);
+        __m256d d3   = _mm256_mul_pd(d2,   diff);
+        vsum_cube    = _mm256_add_pd(vsum_cube, d3);
+    }
+    double temp[4];
+    _mm256_storeu_pd(temp, vsum_cube);
+    *sum_cube += temp[0] + temp[1] + temp[2] + temp[3];
+    return i;
+}
+
+double calc_skewness(const double* arr, uint32_t len) {
     if (!arr || len < 3) return math_nan();
 
     double mean = calc_mean(arr, len);
@@ -391,18 +428,7 @@ TARGET_AVX2 double calc_skewness(const double* arr, uint32_t len) {
 #ifdef COMPILER_X86
     (void)features;
     if (features->has_avx2) {
-        __m256d vmean      = _mm256_set1_pd(mean);
-        __m256d vsum_cube  = _mm256_setzero_pd();
-        for (; i + 3 < len; i += 4) {
-            __m256d val  = _mm256_loadu_pd(&arr[i]);
-            __m256d diff = _mm256_sub_pd(val, vmean);
-            __m256d d2   = _mm256_mul_pd(diff, diff);
-            __m256d d3   = _mm256_mul_pd(d2,   diff);
-            vsum_cube    = _mm256_add_pd(vsum_cube, d3);
-        }
-        double temp[4];
-        _mm256_storeu_pd(temp, vsum_cube);
-        sum_cube += temp[0] + temp[1] + temp[2] + temp[3];
+        i = calc_skewness_avx2(arr, len, mean, &sum_cube);
     } else if (features->has_sse2) {
         __m128d vmean      = _mm_set1_pd(mean);
         __m128d vsum_cube  = _mm_setzero_pd();
@@ -428,7 +454,24 @@ TARGET_AVX2 double calc_skewness(const double* arr, uint32_t len) {
     return moment3 / stddev3;
 }
 
-TARGET_AVX2 double calc_kurtosis(const double* arr, uint32_t len) {
+static TARGET_AVX2 uint32_t calc_kurtosis_avx2(const double* arr, uint32_t len, double mean, double* sum_quart) {
+    uint32_t i = 0;
+    __m256d vmean       = _mm256_set1_pd(mean);
+    __m256d vsum_quart  = _mm256_setzero_pd();
+    for (; i + 3 < len; i += 4) {
+        __m256d val  = _mm256_loadu_pd(&arr[i]);
+        __m256d diff = _mm256_sub_pd(val, vmean);
+        __m256d d2   = _mm256_mul_pd(diff, diff);
+        __m256d d4   = _mm256_mul_pd(d2,   d2);
+        vsum_quart   = _mm256_add_pd(vsum_quart, d4);
+    }
+    double temp[4];
+    _mm256_storeu_pd(temp, vsum_quart);
+    *sum_quart += temp[0] + temp[1] + temp[2] + temp[3];
+    return i;
+}
+
+double calc_kurtosis(const double* arr, uint32_t len) {
     if (!arr || len < 4) return math_nan();
 
     double mean = calc_mean(arr, len);
@@ -443,18 +486,7 @@ TARGET_AVX2 double calc_kurtosis(const double* arr, uint32_t len) {
 #ifdef COMPILER_X86
     (void)features;
     if (features->has_avx2) {
-        __m256d vmean       = _mm256_set1_pd(mean);
-        __m256d vsum_quart  = _mm256_setzero_pd();
-        for (; i + 3 < len; i += 4) {
-            __m256d val  = _mm256_loadu_pd(&arr[i]);
-            __m256d diff = _mm256_sub_pd(val, vmean);
-            __m256d d2   = _mm256_mul_pd(diff, diff);
-            __m256d d4   = _mm256_mul_pd(d2,   d2);
-            vsum_quart   = _mm256_add_pd(vsum_quart, d4);
-        }
-        double temp[4];
-        _mm256_storeu_pd(temp, vsum_quart);
-        sum_quart += temp[0] + temp[1] + temp[2] + temp[3];
+        i = calc_kurtosis_avx2(arr, len, mean, &sum_quart);
     } else if (features->has_sse2) {
         __m128d vmean       = _mm_set1_pd(mean);
         __m128d vsum_quart  = _mm_setzero_pd();
