@@ -119,6 +119,12 @@ foreach(target calc_static calc_shared)
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     )
 
+    # This CMakeLists is the host/simulator build (Target A). PLATFORM_HOST
+    # keeps kernel_log from falling into bare-metal COM1 port I/O (privileged
+    # inb/outb) and selects the host branches in disk_marshal. Embedded targets
+    # (ESP32 via idf.py, RPi, WASM) use their own build systems.
+    target_compile_definitions(${target} PRIVATE PLATFORM_HOST=1)
+
     # warnings: W3 on MSVC (W4 breaks third-party headers). Wall+Wextra+Werror on GCC/Clang.
     # -O3: let the compiler do its job. the SIMD dispatch is the bottleneck anyway.
     if(MSVC)
@@ -188,6 +194,10 @@ target_link_libraries(calc_terminal PRIVATE calc_static)
 target_include_directories(calc_terminal PRIVATE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
 )
+# The host platform driver must define PLATFORM_HOST or the kernel's log
+# fallback tries bare-metal COM1 port I/O (privileged inb/outb) and SIGSEGVs
+# in user space. HOST_APP makes CPUID detection safe for non-bare-metal.
+target_compile_definitions(calc_terminal PRIVATE PLATFORM_HOST=1 HOST_APP=1)
 
 
 add_executable(test_complex_calc Tests/Unit/test_complex_calc.c)
