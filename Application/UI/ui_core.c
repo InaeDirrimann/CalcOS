@@ -128,10 +128,10 @@ UIEvent ui_process_input_default_with_ctx(UIContext* ctx, CalculatorState* calc,
             } else {
                 if (calc->flags & 2) {
                     format_string(ctx->last_error, sizeof(ctx->last_error),
-                                  "Division by zero", 0);
+                                  "Division by zero");
                 } else {
                     format_string(ctx->last_error, sizeof(ctx->last_error),
-                                  "Invalid expression", 0);
+                                  "Invalid expression");
                 }
                 ctx->last_result[0] = '\0';
                 ctx->last_event = UI_EVENT_ERROR;
