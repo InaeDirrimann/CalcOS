@@ -10,6 +10,14 @@
 #define COMPILER_ARM
 #endif
 
+#if defined(__GNUC__) || defined(__clang__)
+#define TARGET_AVX2 __attribute__((target("avx2")))
+#define TARGET_SSE2 __attribute__((target("sse2")))
+#else
+#define TARGET_AVX2
+#define TARGET_SSE2
+#endif
+
 // scalar fallback: b==0 produces NaN, not a crash.
 void div_scalar(CalculatorState* state, const double* a, const double* b, double* result, uint32_t count) {
     int has_zero = 0;
@@ -59,7 +67,7 @@ void div_sse(CalculatorState* state, const double* a, const double* b, double* r
 
 // AVX2 division: 4 doubles per cycle, same zero-lane trick as SSE2.
 // tail: 2-element SSE2 spillover, then single scalar for the last odd element.
-void div_avx2(CalculatorState* state, const double* a, const double* b, double* result, uint32_t count) {
+TARGET_AVX2 void div_avx2(CalculatorState* state, const double* a, const double* b, double* result, uint32_t count) {
 #ifdef COMPILER_X86
     uint32_t i = 0;
     __m256d v_zero = _mm256_setzero_pd();

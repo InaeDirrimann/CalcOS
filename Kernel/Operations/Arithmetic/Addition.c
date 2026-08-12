@@ -2,6 +2,14 @@
 #include <immintrin.h>
 #include <stdint.h>
 
+#if defined(__GNUC__) || defined(__clang__)
+#define TARGET_AVX2 __attribute__((target("avx2")))
+#define TARGET_SSE2 __attribute__((target("sse2")))
+#else
+#define TARGET_AVX2
+#define TARGET_SSE2
+#endif
+
 // scalar fallback. no SIMD. works on anything. grandma's Pentium included.
 void add_scalar(CalculatorState* state, const double* a, const double* b, double* result, uint32_t count) {
     (void)state;
@@ -38,7 +46,7 @@ void add_sse(CalculatorState* state, const double* a, const double* b, double* r
 // AVX2: 256-bit registers, 4 doubles per instruction. twice the throughput of SSE2.
 // tail falls back to SSE2 for 2-element remainder, then scalar for the last 1.
 // don't go straight to scalar for the 2-element tail -- wastes half a vector unit.
-void add_avx2(CalculatorState* state, const double* a, const double* b, double* result, uint32_t count) {
+TARGET_AVX2 void add_avx2(CalculatorState* state, const double* a, const double* b, double* result, uint32_t count) {
     (void)state;
     uint32_t i = 0;
     if ((((uintptr_t)a | (uintptr_t)b | (uintptr_t)result) & 31) == 0) {

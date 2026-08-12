@@ -128,12 +128,14 @@ foreach(target calc_static calc_shared)
     endif()
 
     # Apply AVX2 configurations
+    # NOTE: On GCC/Clang we deliberately do NOT pass -mavx2 globally. The AVX2
+    # kernels use per-function __attribute__((target("avx2"))) and are selected
+    # at runtime via CPUID dispatch. A global -mavx2 would let -O3 auto-vectorize
+    # the whole binary with AVX2 and SIGILL on older CPUs that lack the feature.
     if(CALC_ENABLE_AVX2)
         target_compile_definitions(${target} PRIVATE USE_AVX2=1)
         if(MSVC)
             target_compile_options(${target} PRIVATE /arch:AVX2)
-        else()
-            target_compile_options(${target} PRIVATE -mavx2)
         endif()
     endif()
 
@@ -144,8 +146,6 @@ foreach(target calc_static calc_shared)
             if(CMAKE_SIZEOF_VOID_P EQUAL 4)
                 target_compile_options(${target} PRIVATE /arch:SSE2)
             endif()
-        else()
-            target_compile_options(${target} PRIVATE -msse2)
         endif()
     endif()
 

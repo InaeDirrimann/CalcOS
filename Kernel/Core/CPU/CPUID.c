@@ -12,6 +12,7 @@ void cpu_detect_features(CPUFeatures* features) {
     features->has_sse  = true;   // x86_64 ABI guarantees SSE2 minimum
     features->has_sse2 = true;
     features->has_sse3 = true;
+    features->has_sse4_1 = true;
     features->has_avx  = false;  // don't assume AVX, old VMs won't have it
     features->has_avx2 = false;
     features->has_fma  = false;
@@ -25,6 +26,7 @@ void cpu_detect_features(CPUFeatures* features) {
     features->has_sse = false;
     features->has_sse2 = false;
     features->has_sse3 = false;
+    features->has_sse4_1 = false;
     features->has_avx = false;
     features->has_avx2 = false;
     features->has_fma = false;
@@ -57,8 +59,9 @@ void cpu_detect_features(CPUFeatures* features) {
     if (edx & (1 << 25)) features->has_sse = true;
     if (edx & (1 << 26)) features->has_sse2 = true;
 
-    // ECX bit 0: SSE3, bit 12: FMA, bit 28: AVX
+    // ECX bit 0: SSE3, bit 19: SSE4.1, bit 12: FMA, bit 28: AVX
     if (ecx & (1 << 0))  features->has_sse3 = true;
+    if (ecx & (1 << 19)) features->has_sse4_1 = true;
     if (ecx & (1 << 12)) features->has_fma = true;
     if (ecx & (1 << 28)) features->has_avx = true;
 

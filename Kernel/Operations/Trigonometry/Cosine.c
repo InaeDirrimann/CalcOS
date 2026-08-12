@@ -16,9 +16,11 @@
 #if defined(__GNUC__) || defined(__clang__)
 #define TARGET_AVX2 __attribute__((target("avx2")))
 #define TARGET_SSE2 __attribute__((target("sse2")))
+#define TARGET_SSE4_1 __attribute__((target("sse4.1")))
 #else
 #define TARGET_AVX2
 #define TARGET_SSE2
+#define TARGET_SSE4_1
 #endif
 
 static inline double approx_cos_scalar(double x) {
@@ -40,7 +42,7 @@ void cos_scalar(CalculatorState* state, const double* a, double* result, uint32_
     }
 }
 
-TARGET_SSE2 void cos_sse(CalculatorState* state, const double* a, double* result, uint32_t count) {
+TARGET_SSE4_1 void cos_sse(CalculatorState* state, const double* a, double* result, uint32_t count) {
     (void)state;
 #ifdef COMPILER_X86
     uint32_t i = 0;
@@ -182,7 +184,7 @@ void execute_cosine(CalculatorState* state, const double* a, double* result, uin
         cos_neon(state, a, result, count);
     } else if (features->has_avx2) {
         cos_avx2(state, a, result, count);
-    } else if (features->has_sse2) {
+    } else if (features->has_sse4_1) {
         cos_sse(state, a, result, count);
     } else {
         cos_scalar(state, a, result, count);

@@ -10,6 +10,14 @@
 #define COMPILER_ARM
 #endif
 
+#if defined(__GNUC__) || defined(__clang__)
+#define TARGET_AVX2 __attribute__((target("avx2")))
+#define TARGET_SSE2 __attribute__((target("sse2")))
+#else
+#define TARGET_AVX2
+#define TARGET_SSE2
+#endif
+
 // scalar fallback. no overflow guards needed -- IEEE 754 handles inf.
 void mul_scalar(CalculatorState* state, const double* a, const double* b, double* result, uint32_t count) {
     (void)state;
@@ -38,7 +46,7 @@ void mul_sse(CalculatorState* state, const double* a, const double* b, double* r
 }
 
 // AVX2: 4 doubles per cycle. tail: SSE2 for 2-element remainder, scalar for last 1.
-void mul_avx2(CalculatorState* state, const double* a, const double* b, double* result, uint32_t count) {
+TARGET_AVX2 void mul_avx2(CalculatorState* state, const double* a, const double* b, double* result, uint32_t count) {
     (void)state;
 #ifdef COMPILER_X86
     uint32_t i = 0;

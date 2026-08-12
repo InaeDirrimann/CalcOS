@@ -16,9 +16,11 @@
 #if defined(__GNUC__) || defined(__clang__)
 #define TARGET_AVX2 __attribute__((target("avx2")))
 #define TARGET_SSE2 __attribute__((target("sse2")))
+#define TARGET_SSE4_1 __attribute__((target("sse4.1")))
 #else
 #define TARGET_AVX2
 #define TARGET_SSE2
+#define TARGET_SSE4_1
 #endif
 
 static inline double approx_sin_scalar(double x) {
@@ -40,7 +42,7 @@ void sin_scalar(CalculatorState* state, const double* a, double* result, uint32_
     }
 }
 
-TARGET_SSE2 void sin_sse(CalculatorState* state, const double* a, double* result, uint32_t count) {
+TARGET_SSE4_1 void sin_sse(CalculatorState* state, const double* a, double* result, uint32_t count) {
     (void)state;
 #ifdef COMPILER_X86
     uint32_t i = 0;
@@ -190,7 +192,7 @@ void execute_sine(CalculatorState* state, const double* a, double* result, uint3
         sin_neon(state, a, result, count);
     } else if (features->has_avx2) {
         sin_avx2(state, a, result, count);
-    } else if (features->has_sse2) {
+    } else if (features->has_sse4_1) {
         sin_sse(state, a, result, count);
     } else {
         sin_scalar(state, a, result, count);

@@ -11,6 +11,14 @@
 #define COMPILER_ARM
 #endif
 
+#if defined(__GNUC__) || defined(__clang__)
+#define TARGET_AVX2 __attribute__((target("avx2")))
+#define TARGET_SSE2 __attribute__((target("sse2")))
+#else
+#define TARGET_AVX2
+#define TARGET_SSE2
+#endif
+
 static inline double bitwise_or_scalar_single(double a, double b) {
     uint64_t ua, ub, ur;
     memcpy(&ua, &a, sizeof(double));
@@ -46,7 +54,7 @@ void or_sse(CalculatorState* state, const double* a, const double* b, double* re
 #endif
 }
 
-void or_avx2(CalculatorState* state, const double* a, const double* b, double* result, uint32_t count) {
+TARGET_AVX2 void or_avx2(CalculatorState* state, const double* a, const double* b, double* result, uint32_t count) {
     (void)state;
 #ifdef COMPILER_X86
     uint32_t i = 0;
