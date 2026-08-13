@@ -2,14 +2,14 @@ import os
 import sys
 from pathlib import Path
 
-# Force UTF-8 stdout encoding for Windows terminal unicode support! 🏎️
+# Force UTF-8 stdout encoding for Windows terminal unicode support!
 if hasattr(sys.stdout, 'reconfigure'):
     try:
         sys.stdout.reconfigure(encoding='utf-8')
     except Exception:
         pass
 
-# THE ULTRA-FAST NO-DEPENDENCY PROJECT PACKAGER 🏎️
+# THE ULTRA-FAST NO-DEPENDENCY PROJECT PACKAGER 
 # PACKAGES THE HOLY REPOSITORY INTO A SINGLE PLAIN TEXT FILE FOR ANTISEPTIC STORAGE
 
 VERSION = "1.0.0"
