@@ -1,6 +1,6 @@
 # Build Targets
 
-CalcOS compiles to six distinct deployment targets from the same core source tree.
+CalcOS compiles to 6 distinct deployment targets from the same core source tree.
 
 | Target | Command | Output | Notes |
 |---|---|---|---|
