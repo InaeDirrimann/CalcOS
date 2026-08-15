@@ -54,4 +54,7 @@ x = 5
 x^2 + 2*x + 1   -> 36
 ```
 
-Complex number literals: append `i` to a number: `3 + 4i`, `2i`, `-1i`.
+Complex number literals (append `i` to a number: `3 + 4i`, `2i`, `-1i`) and
+complex arithmetic are currently supported in the RPN evaluation path (see the
+ShuntingYard/experimental parser and `test_parse`), not in the standard
+expression parser — there `sqrt(-4)` is a domain error.

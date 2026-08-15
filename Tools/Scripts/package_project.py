@@ -13,7 +13,6 @@ if hasattr(sys.stdout, 'reconfigure'):
 # PACKAGES THE HOLY REPOSITORY INTO A SINGLE PLAIN TEXT FILE FOR ANTISEPTIC STORAGE
 
 VERSION = "1.0.0"
-PROJECT_NAME = "Calculator"
 
 def generate_tree(dir_path, prefix=""):
     """Recursively generates a visual tree of the codebase."""
@@ -44,9 +43,10 @@ def generate_tree(dir_path, prefix=""):
 def package_project():
     workspace = Path(__file__).resolve().parent.parent.parent
     script_dir = Path(__file__).resolve().parent
+    project_name = workspace.name
     output_dir = script_dir / "Output"
     output_dir.mkdir(exist_ok=True)
-    output_file = output_dir / f"{PROJECT_NAME}_v{VERSION}.txt"
+    output_file = output_dir / f"{project_name}_v{VERSION}.txt"
 
     # INTERACTIVE DASHBOARD WITH GORGEOUS HARDWARE STYLE ASCII
     print("\n" + "=" * 60)
@@ -78,7 +78,7 @@ def package_project():
 
     lines = []
     lines.append("=" * 80)
-    lines.append(f"[BOX] PROJECT SUBMISSION: {PROJECT_NAME} v{VERSION}")
+    lines.append(f"[BOX] PROJECT SUBMISSION: {project_name} v{VERSION}")
     lines.append(f"Generated on: {os.name} platform")
     lines.append("=" * 80)
     lines.append("\n[DIR] TREE STRUCTURE:")
