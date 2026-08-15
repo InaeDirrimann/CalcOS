@@ -118,7 +118,7 @@ No standard libraries. No `libm`. Every mathematical operation implemented from 
 ```text
   >> rk4(x + y, x, y, 0, 1, 10, 1000)
 ```
-- **Complex Numbers**: Full imaginary parsing using `i` syntax (e.g., `sqrt(-4) = 2i`), complex multiplication, and complex trigonometry.
+- **Complex Numbers**: Imaginary parsing via `i` syntax (`2 3i +` = `2+3i`, `sqrt(-4)` = `2i`) in the RPN/experimental evaluation path. The standard expression parser stays real-only, so `3+4i` there is a domain error (see `Docs/ParserReference.md`).
 - **BigInt Division**: Knuth's Algorithm D implemented for multi-precision division on raw uint64 arrays without heap allocations. Yes I read the actual TAOCP chapter for a calculator. No I do not accept feedback on this life choice.
 - **Memory Safety**: Hardened stack buffer copying loops and double-to-int64 precision checks to ensure NaN expressions or long inputs never trigger a stack smash. This is the one part of the project that's actually responsible. Cherish it.
 

@@ -1,13 +1,11 @@
 #include "Multiplication.h"
+#include "../../Core/CPU/SIMD.h"
 
-#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+#ifdef COMPILER_X86
 #include <immintrin.h>
-#define COMPILER_X86
 #endif
-
-#if defined(__ARM_NEON) || defined(__aarch64__) || defined(_M_ARM) || defined(_M_ARM64)
+#ifdef COMPILER_ARM
 #include <arm_neon.h>
-#define COMPILER_ARM
 #endif
 
 // scalar fallback. no overflow guards needed -- IEEE 754 handles inf.
@@ -19,7 +17,7 @@ void mul_scalar(CalculatorState* state, const double* a, const double* b, double
 }
 
 // SSE2: 2 doubles per cycle. 128-bit multiply.
-void mul_sse(CalculatorState* state, const double* a, const double* b, double* result, uint32_t count) {
+TARGET_SSE2 void mul_sse(CalculatorState* state, const double* a, const double* b, double* result, uint32_t count) {
     (void)state;
 #ifdef COMPILER_X86
     uint32_t i = 0;
@@ -38,7 +36,7 @@ void mul_sse(CalculatorState* state, const double* a, const double* b, double* r
 }
 
 // AVX2: 4 doubles per cycle. tail: SSE2 for 2-element remainder, scalar for last 1.
-void mul_avx2(CalculatorState* state, const double* a, const double* b, double* result, uint32_t count) {
+TARGET_AVX2 void mul_avx2(CalculatorState* state, const double* a, const double* b, double* result, uint32_t count) {
     (void)state;
 #ifdef COMPILER_X86
     uint32_t i = 0;

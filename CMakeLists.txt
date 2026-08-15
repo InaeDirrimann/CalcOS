@@ -119,6 +119,12 @@ foreach(target calc_static calc_shared)
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     )
 
+    # This CMakeLists is the host/simulator build (Target A). PLATFORM_HOST
+    # keeps kernel_log from falling into bare-metal COM1 port I/O (privileged
+    # inb/outb) and selects the host branches in disk_marshal. Embedded targets
+    # (ESP32 via idf.py, RPi, WASM) use their own build systems.
+    target_compile_definitions(${target} PRIVATE PLATFORM_HOST=1)
+
     # warnings: W3 on MSVC (W4 breaks third-party headers). Wall+Wextra+Werror on GCC/Clang.
     # -O3: let the compiler do its job. the SIMD dispatch is the bottleneck anyway.
     if(MSVC)
@@ -128,12 +134,14 @@ foreach(target calc_static calc_shared)
     endif()
 
     # Apply AVX2 configurations
+    # NOTE: On GCC/Clang we deliberately do NOT pass -mavx2 globally. The AVX2
+    # kernels use per-function __attribute__((target("avx2"))) and are selected
+    # at runtime via CPUID dispatch. A global -mavx2 would let -O3 auto-vectorize
+    # the whole binary with AVX2 and SIGILL on older CPUs that lack the feature.
     if(CALC_ENABLE_AVX2)
         target_compile_definitions(${target} PRIVATE USE_AVX2=1)
         if(MSVC)
             target_compile_options(${target} PRIVATE /arch:AVX2)
-        else()
-            target_compile_options(${target} PRIVATE -mavx2)
         endif()
     endif()
 
@@ -144,8 +152,6 @@ foreach(target calc_static calc_shared)
             if(CMAKE_SIZEOF_VOID_P EQUAL 4)
                 target_compile_options(${target} PRIVATE /arch:SSE2)
             endif()
-        else()
-            target_compile_options(${target} PRIVATE -msse2)
         endif()
     endif()
 
@@ -188,6 +194,10 @@ target_link_libraries(calc_terminal PRIVATE calc_static)
 target_include_directories(calc_terminal PRIVATE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
 )
+# The host platform driver must define PLATFORM_HOST or the kernel's log
+# fallback tries bare-metal COM1 port I/O (privileged inb/outb) and SIGSEGVs
+# in user space. HOST_APP makes CPUID detection safe for non-bare-metal.
+target_compile_definitions(calc_terminal PRIVATE PLATFORM_HOST=1 HOST_APP=1)
 
 
 add_executable(test_complex_calc Tests/Unit/test_complex_calc.c)

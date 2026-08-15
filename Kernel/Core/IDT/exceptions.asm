@@ -44,12 +44,12 @@
     ;   CPU pushed: error_code(8) + RIP(8) + CS(8) + RFLAGS(8) = 32 bytes
     ;   We pushed:  15 GPRs(120) + push %1(8) + push rdi(8) = 136 bytes
     ;   Total before call: 32 + 136 = 168 = 16*10 + 8 → 8 (mod 16)
-    ;   After call pushes return address: +8 → 0 (mod 16) = ALIGNED! ✓
+    ;   After call pushes return address: +8 → 0 (mod 16) = ALIGNED!
     ;
     ; For non-error-code exceptions (#DE, #UD):
     ;   CPU pushed: RIP(8) + CS(8) + RFLAGS(8) = 24 bytes
     ;   We pushed: push 0(8) + 15 GPRs(120) + push %1(8) + push rdi(8) = 144 bytes
-    ;   Total before call: 24 + 144 = 168 = same as above → aligned after call! ✓
+    ;   Total before call: 24 + 144 = 168 = same as above → aligned after call!
     ; No padding needed — removing the old sub rsp,8 was the real fix. 
     
     mov rdi, rsp                ; RDI = pointer to RegDump struct
