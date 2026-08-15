@@ -111,14 +111,33 @@ UIEvent ui_process_input_default_with_ctx(UIContext* ctx, CalculatorState* calc,
 
                 format_string(ctx->last_result, sizeof(ctx->last_result), "%f", result);
                 // FIX: Strip trailing zeros "4.000000" "4"
-                // Keeps significant decimals: "3.500000" "3.5", "4.000000" "4"
+                // Keeps significant decimals: "3.500000" "3.5", "4.000000" "4".
+                // Exponent-aware: "1.000000e+30" -> "1e+30", never "1.000000e+3".
                 for (char* p = ctx->last_result; *p; p++) {
                     if (*p == '.') {
-                        char* end = p;
-                        while (*end) end++;           // Go to end
-                        while (end > p && *--end == '0');  // Backtrack past trailing zeros
-                        if (end == p) *end = '\0';    // Nothing after dot kill dot only
-                        else *(end + 1) = '\0';        // Keep non-zero digit, null after it
+                        char* exp_marker = p;
+                        while (*exp_marker && *exp_marker != 'e' && *exp_marker != 'E') {
+                            exp_marker++;  // exponent tail starts here (or NUL)
+                        }
+                        // Backtrack past trailing zeros in the fraction only.
+                        char* frac_end = exp_marker;
+                        while (frac_end > p + 1 && *(frac_end - 1) == '0') {
+                            frac_end--;
+                        }
+                        if (frac_end == p + 1) {
+                            // All-zero fraction: drop '.' plus fraction, keep tail.
+                            // Copies exp_marker..NUL left onto p (dst < src, forward).
+                            char* r = exp_marker;
+                            char* w = p;
+                            do { *w++ = *r; } while (*r++ != '\0');
+                        } else if (frac_end < exp_marker) {
+                            // Some trailing zeros: trim them, re-attach the tail.
+                            *frac_end = '\0';
+                            char* r = exp_marker;
+                            char* w = frac_end;
+                            do { *w++ = *r; } while (*r++ != '\0');
+                        }
+                        // else: no trailing zeros, string already correct.
                         break;
                     }
                 }
