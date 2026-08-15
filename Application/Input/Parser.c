@@ -511,28 +511,15 @@ static double parse_grouping(Tokenizer* tok, CalculatorState* state, bool* succe
     return val;
 }
 
+static double local_atan(double x); // forward: local_asin uses the atan reduction
+
 static double local_asin(double x) {
     if (x < -1.0 || x > 1.0) return calc_nan();
-    double abs_x = x < 0.0 ? -x : x;
-    if (abs_x < 1e-8) return x;
-    
-    double res;
-    if (abs_x <= 0.5) {
-        double x2 = abs_x * abs_x;
-        res = abs_x * (1.0 + x2 * (0.16666666666666666 + x2 * (0.075 + x2 * (0.04464285714285714 + x2 * 0.030381944444444444))));
-    } else {
-        double rem = 0.5 * (1.0 - abs_x);
-        double u = rem;
-        if (rem > 0.0) {
-            for (int i = 0; i < 8; i++) u = 0.5 * (u + rem / u);
-        } else {
-            u = 0.0;
-        }
-        double u2 = u * u;
-        double asin_u = u * (1.0 + u2 * (0.16666666666666666 + u2 * (0.075 + u2 * (0.04464285714285714 + u2 * 0.030381944444444444))));
-        res = PI / 2.0 - 2.0 * asin_u;
-    }
-    return x < 0.0 ? -res : res;
+    if (x == 0.0) return 0.0;
+    // asin(x) = atan(x / sqrt(1 - x^2)): the direct Taylor series converges
+    // too slowly near |x| = 0.5+ (was off by 1.36e-5 at x = 0.5). The atan
+    // path rides on the accurate two-pivot atan reduction instead.
+    return local_atan(x / local_sqrt(1.0 - x * x));
 }
 
 static double local_acos(double x) {
