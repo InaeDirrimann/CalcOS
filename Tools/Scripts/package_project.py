@@ -24,7 +24,7 @@ def generate_tree(dir_path, prefix=""):
     tree = []
     
     # Filter out build artifacts, git configurations, vendor dirs, and python temp folders
-    # DOGMA: If it's not source code WE WROTE, it doesn't go in the archive. 💀
+    # DOGMA: If it's not source code WE WROTE, it doesn't go in the archive.
     ignored = {".git", ".vs", "bin", "obj", "__pycache__", "Output", "DotNetPerf", 
                "build", "bench_runner", "test_runner", ".deepseek", "vcpkg", "packages",
                "node_modules", ".gemini", ".vscode", ".idea"}

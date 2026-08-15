@@ -1,5 +1,5 @@
 ; Infrastructure/Platform/Retro1990/BootEntry1990.asm
-; Legacy 16-bit Bootloader targeting Intel 80386/80486 (32-bit Protected Mode) 🏎️
+; Legacy 16-bit Bootloader targeting Intel 80386/80486 (32-bit Protected Mode)
 
 [org 0x7c00]
 [bits 16]
@@ -17,7 +17,7 @@ boot_entry:
     int 0x15
 
     ; Switch to 32-bit Protected Mode
-    cli                     ; Disable interrupts 💀
+    cli                     ; Disable interrupts
     lgdt [gdt_descriptor]   ; Load 32-bit GDT
 
     mov eax, cr0

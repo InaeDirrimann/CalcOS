@@ -1,6 +1,6 @@
 SECTIONS
 {
-    // Raspberry Pi loads bare-metal kernels at address 0x80000 (AArch64 mode) 🏎️
+    // Raspberry Pi loads bare-metal kernels at address 0x80000 (AArch64 mode)
     . = 0x80000;
     
     .text : {

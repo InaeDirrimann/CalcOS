@@ -1,5 +1,5 @@
 <div align="center">
-  <h1>⚜︎ CALC OS</h1>
+  <h1>CALC OS</h1>
   <p><i>"Built at 3am. Booted on bare metal. Regretted nothing."</i></p>
 
   <code>[ Conventional Memory: 640KB ]</code> &nbsp; <code>[ Core Size: 64 Bytes ]</code> &nbsp; <code>[ Target: Freestanding x86_64 ]</code>
@@ -75,11 +75,11 @@ The result is a unified engine that runs **anywhere**:
 *   **100% Freestanding Bare-Metal**: Boots directly on physical x86_64 CPU silicon or QEMU with exactly **24 Kilobytes of RAM** (zero OS, zero libc).
 *   **Host OS Native**: Compiles natively as a standard user-space app on Windows, Linux, macOS, WebAssembly (WASM), or ESP32 microcontrollers. 
 
-Same core math engine. Same parser. Zero code duplication. Just swap the driver. ⚜︎ 
+Same core math engine. Same parser. Zero code duplication. Just swap the driver.
 
 ---
 
-## ✦﹎ WHY INFLICT THIS ON MYSELF?
+## WHY INFLICT THIS ON MYSELF?
 
 - **Zero-Bypass Performance** - No OS. No Windows. No Linux. No libc. The code owns the CPU registers and writes characters directly to the VGA text-mode buffer at `0xB8000`. Ring 0 or bust, baby.
 - **Zero-Allocation Policy** - Strictly no `malloc`, no `free`, and no heap. Everything is statically allocated or processed on the stack. If it doesn't fit, it doesn't compile. The heap was never invited to this party.
@@ -88,7 +88,7 @@ Same core math engine. Same parser. Zero code duplication. Just swap the driver.
 
 ---
 
-## ☨ THE BARE-METAL ARCHITECTURE (Target B)
+## THE BARE-METAL ARCHITECTURE (Target B)
 
 When booted on real hardware or emulated in QEMU, the system runs a flat, unsegmented physical memory model:
 HARDWARE  →  Bootloader (BootEntry.asm)  →  Protected Mode Switch  →  C-Kernel (0x8000)
@@ -101,11 +101,11 @@ The boot sequence runs in **3 phases** to transition the CPU from 16-bit legacy 
 | **Phase 1** | [BootEntry.asm](Bootloader/Boot/BootEntry.asm) | Loads 32 sectors of C code from disk to address `0x8000`. Sets the PE bit in `CR0` to switch to 32-bit Protected Mode. Far-jumps to flush the prefetch queue. |
 | **Phase 2** | [KernelLoader.c](Bootloader/Loader/KernelLoader.c) | Establishes the Protected Mode stack pointer at `0x90000`. Remaps the PIC to route PS/2 keyboard interrupts, loads the IDT, and jumps to the calculator loop. |
 
-> ⚡︎ **The 24KB Stack Ceiling**: If you emulated this on a strict `-m 24k` QEMU layout, setting the stack to `0x90000` (576KB) would cause a GPF. We stick to `-m 640k` (conventional IBM PC memory) so the calculator has plenty of safety margin to run. "Plenty of safety margin" is doing a LOT of heavy lifting in that sentence.
+> **The 24KB Stack Ceiling**: If you emulated this on a strict `-m 24k` QEMU layout, setting the stack to `0x90000` (576KB) would cause a GPF. We stick to `-m 640k` (conventional IBM PC memory) so the calculator has plenty of safety margin to run. "Plenty of safety margin" is doing a LOT of heavy lifting in that sentence.
 
 ---
 
-## ⚡︎ THE ENGINE
+## THE ENGINE
 
 No standard libraries. No `libm`. Every mathematical operation implemented from scratch, because apparently I have a personal vendetta against `#include <math.h>`:
 
@@ -124,7 +124,7 @@ No standard libraries. No `libm`. Every mathematical operation implemented from 
 
 ---
 
-## ⚙︎ THE PLUGIN PROTOCOL *(Don't Touch The Core)*
+## THE PLUGIN PROTOCOL *(Don't Touch The Core)*
 
 A modular, decoupled plugin system so external developers can write plugins without compile-time coupling — an unreasonable amount of enterprise architecture for a thing that adds numbers:
 PLUGIN DLL  →  ExportAPI()  →  Service Mesh  →  Global Parser Registry
@@ -142,7 +142,7 @@ Follow the **Isolation Protocol** to write a plugin:
 
 ---
 
-## ☿ HOW TO RUN THE CHAOS
+## HOW TO RUN THE CHAOS
 
 ### 1. Compile the Simulator (Target A)
 Compile the engine wrapped in a desktop terminal/GUI driver for rapid testing:
@@ -171,7 +171,7 @@ Assemble the boot sector using NASM and boot the raw disk image under QEMU:
 
 ---
 
-## ☲ THE RULES OF THE FORGE
+## THE RULES OF THE FORGE
 
 These aren't design patterns. They are hard-won lessons written in triple-fault hardware reboots and compiler register spilling:
 

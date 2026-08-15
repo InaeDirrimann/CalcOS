@@ -18,8 +18,8 @@ int main() {
     cpu_detect_features(&features);
 
     printf("=== HARDWARE ACCELERATION PROFILE ===\n");
-    printf("AVX2 Support: %s\n", features.has_avx2 ? "DETECTED 🔥" : "MISSING 😭");
-    printf("SSE2 Support: %s\n", features.has_sse2 ? "DETECTED 🔥" : "MISSING 😭");
+    printf("AVX2 Support: %s\n", features.has_avx2 ? "DETECTED" : "MISSING");
+    printf("SSE2 Support: %s\n", features.has_sse2 ? "DETECTED" : "MISSING");
 
     // Initialize arrays
     for (int i = 0; i < ARRAY_SIZE; ++i) {
@@ -61,7 +61,7 @@ int main() {
     printf("\n=== PERFORMANCE RESULTS (AVG CYCLES PER ARRAY OF SIZE %d) ===\n", ARRAY_SIZE);
     printf("Scalar Fallback: %llu cycles\n", scalar_cycles);
     printf("SSE Vectorized : %llu cycles (Speedup: %.2fx)\n", sse_cycles, (double)scalar_cycles / sse_cycles);
-    printf("AVX2 Vectorized: %llu cycles (Speedup: %.2fx) 🔥\n", avx2_cycles, (double)scalar_cycles / avx2_cycles);
+    printf("AVX2 Vectorized: %llu cycles (Speedup: %.2fx)\n", avx2_cycles, (double)scalar_cycles / avx2_cycles);
 
     return 0;
 }
