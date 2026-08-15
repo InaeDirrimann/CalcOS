@@ -36,11 +36,24 @@ static inline double simple_ln(double x) {
 
 static inline double local_sqrt(double val) {
     if (val < 0.0) return calc_nan();
-    double res = val;
-    if (val > 0.0) {
-        for (int i = 0; i < 8; i++) res = 0.5 * (res + val / res);
+    if (val == 0.0) return 0.0;
+    union { double d; uint64_t i; } u;
+    u.d = val;
+    int k = ((u.i >> 52) & 0x7FF) - 1023;
+    if (k == -1023) {
+        // denormal: scale up by 2^52, recurse, scale back by 2^-26
+        return local_sqrt(val * 4503599627370496.0) * 1.52587890625e-08;
     }
-    return res;
+    u.i = (u.i & 0x000FFFFFFFFFFFFFULL) | 0x3FF0000000000000ULL;
+    double m = u.d;
+    if (k & 1) m *= 2.0;                 // m in [1, 4)
+    double r = m;                        // start within 4x of sqrt(m)
+    for (int i = 0; i < 8; i++) r = 0.5 * (r + m / r);
+    int half = k >> 1;                   // floor(k/2)
+    union { double d; uint64_t i; } res;
+    res.d = r;                           // r in [1, 2)
+    res.i = (res.i & 0x000FFFFFFFFFFFFFULL) | ((uint64_t)(1023 + half) << 52);
+    return res.d;
 }
 
 static inline double local_factorial(double val) {

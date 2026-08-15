@@ -172,12 +172,43 @@ static inline double simple_ln(double x) {
     int k = ((u.i >> 52) & 0x7FF) - 1023;
     u.i = (u.i & 0x000FFFFFFFFFFFFFULL) | 0x3FF0000000000000ULL;
     double m = u.d;
+    if (m > 1.4142135623730951) { // 2^(1/2): pull m into [1, sqrt(2))
+        m *= 0.5;
+        k++;
+    }
     double num = m - 1.0;
     double den = m + 1.0;
     double z = num / den;
     double z2 = z * z;
-    double poly = z * (2.0 + z2 * (0.6666666666666666 + z2 * (0.4 + z2 * (0.2857142857142857 + z2 * 0.2222222222222222))));
+    // atanh series through z^15. With m in [1, sqrt(2)) the worst case is
+    // z = 0.1716, so truncation error is ~1.3e-14 (was ~1e-9 at z = 1/3).
+    double poly = z * (2.0 + z2 * (0.6666666666666666 + z2 * (0.4 + z2 * (0.2857142857142857 + z2 * (0.2222222222222222 + z2 * (0.18181818181818182 + z2 * (0.15384615384615385 + z2 * 0.13333333333333333)))))));
     return poly + (double)k * 0.6931471805599453;
+}
+
+/* sqrt with exponent normalization: Newton from a start within 4x of the root.
+ * The old 8-iteration-from-val version only converged when val/root < 256,
+ * so sqrt(1e300) returned 3.9e297 instead of 1e150. */
+static double local_sqrt(double val) {
+    if (val < 0.0) return calc_nan();
+    if (val == 0.0) return 0.0;
+    union { double d; uint64_t i; } u;
+    u.d = val;
+    int k = ((u.i >> 52) & 0x7FF) - 1023;
+    if (k == -1023) {
+        // denormal: scale up by 2^52, recurse, scale back by 2^-26
+        return local_sqrt(val * 4503599627370496.0) * 1.52587890625e-08;
+    }
+    u.i = (u.i & 0x000FFFFFFFFFFFFFULL) | 0x3FF0000000000000ULL;
+    double m = u.d;
+    if (k & 1) m *= 2.0;                 // m in [1, 4)
+    double r = m;                        // start within 4x of sqrt(m)
+    for (int i = 0; i < 8; i++) r = 0.5 * (r + m / r);
+    int half = k >> 1;                   // floor(k/2)
+    union { double d; uint64_t i; } res;
+    res.d = r;                           // r in [1, 2)
+    res.i = (res.i & 0x000FFFFFFFFFFFFFULL) | ((uint64_t)(1023 + half) << 52);
+    return res.d;
 }
 
 static double local_rand(void) {
@@ -200,11 +231,7 @@ static double local_randn(void) {
     double val = -2.0 * ln_u1;
     double r = 0.0;
     if (val > 0.0) {
-        double sq = val;
-        for (int i = 0; i < 8; ++i) {
-            sq = 0.5 * (sq + val / sq);
-        }
-        r = sq;
+        r = local_sqrt(val);
     }
     double theta = 2.0 * PI * u2;
     return r * local_cos(theta);
@@ -584,15 +611,10 @@ static double parse_unary_sqrt(Tokenizer* tok, CalculatorState* state, bool* suc
         *success = false;
         return 0.0;
     }
-    double res = val;
-    if (val > 0.0) {
-        for (int i = 0; i < 8; i++) res = 0.5 * (res + val / res);
-    }
-    return res;
+    return local_sqrt(val);
 }
 
-static double parse_binary(Tokenizer* tok, CalculatorState* state, double left, bool* success) {
-    Token op = tokenizer_consume(tok);
+static double parse_binary(Tokenizer* tok, CalculatorState* state, double left, bool* success) {    Token op = tokenizer_consume(tok);
     ParseRule rule = get_rule(op.type);
     double right = parse_precedence(tok, state, (Precedence)(rule.precedence + 1), success);
     if (!*success) return 0.0;
@@ -957,12 +979,7 @@ static double parse_identifier(Tokenizer* tok, CalculatorState* state, bool* suc
                 }
                 if (var_x_sum == 0.0 || var_y_sum == 0.0) return 0.0;
                 double denom_val = var_x_sum * var_y_sum;
-                double denom_sqrt = denom_val;
-                if (denom_val > 0.0) {
-                    for (int i = 0; i < 8; i++) {
-                        denom_sqrt = 0.5 * (denom_sqrt + denom_val / denom_sqrt);
-                    }
-                }
+                double denom_sqrt = denom_val > 0.0 ? local_sqrt(denom_val) : 0.0;
                 return cov_sum / denom_sqrt;
             }
         }
