@@ -560,16 +560,52 @@ static double local_atan(double x) {
 static double local_pow(double base, double exp) {
     if (exp == 0.0) return 1.0;
     if (base == 0.0) return 0.0;
-    if (base < 0.0) {
+    // Integer exponent fast path: exponentiation by squaring.
+    // 5^2 == 25.0 exactly, while exp(2*ln(5)) gave 24.9999999890547.
+    // Bounds keep the int64 cast well inside defined territory (the old
+    // code cast unguarded and hit UB for |exp| > 2^63).
+    if (exp > -9.0e18 && exp < 9.0e18) {
         int64_t n = (int64_t)exp;
         if ((double)n == exp) {
-            double res = local_pow(-base, exp);
-            if (n & 1) return -res;
-            return res;
+            if (base < 0.0) {
+                double res = local_pow(-base, exp);
+                return (n & 1) ? -res : res;
+            }
+            int64_t e = n < 0 ? -n : n;
+            double r = 1.0;
+            double b = base;
+            while (e > 0) {
+                if (e & 1) r *= b;
+                b *= b;
+                e >>= 1;
+            }
+            return n < 0 ? 1.0 / r : r;
         }
-        return calc_nan();
     }
+    if (base < 0.0) return calc_nan(); // fractional power of a negative
     return local_exp(exp * simple_ln(base));
+}
+
+static double local_abs(double x) {
+    return x < 0.0 ? -x : x;
+}
+
+static double local_floor(double x) {
+    if (x != x) return x;                    // NaN passthrough
+    if (x >= 9.0e18 || x <= -9.0e18) return x; // already integral, avoid UB cast
+    int64_t n = (int64_t)x;
+    double d = (double)n;
+    if (d > x) d -= 1.0;                     // negative non-integral truncates up
+    return d;
+}
+
+static double local_ceil(double x) {
+    if (x != x) return x;
+    if (x >= 9.0e18 || x <= -9.0e18) return x;
+    int64_t n = (int64_t)x;
+    double d = (double)n;
+    if (d < x) d += 1.0;
+    return d;
 }
 
 static double parse_factorial(Tokenizer* tok, CalculatorState* state, double left, bool* success) {
