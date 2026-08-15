@@ -19,12 +19,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <stdbool.h>
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #define TokenType WindowsTokenType
 #include <windows.h>
+#include <io.h>
 #undef TokenType
+#else
+#include <unistd.h>
 #endif
 
 #include "../../include/calc/display.h"
@@ -42,6 +46,7 @@
 #include "../../Kernel/API/StackAPI.h"
 #include "../../Kernel/API/LoggerAPI.h"
 #include "../../Kernel/State/CalculatorState.h"
+#include "../../Application/Input/Parser.h"
 #include "../../Kernel/Core/CPU/CPUID.h"
 #include "../../Infrastructure/Utils/MemoryUtils.h"
 
@@ -66,6 +71,11 @@ typedef struct {
     InputDriver input;         // Input backend
 } HostAppState;
 
+// Defined before main(); forward-declared so the UI init/deinit paths
+// can check whether we are attached to a real terminal.
+static int stdout_is_tty(void);
+static int stdin_is_tty(void);
+
 // FIX: Proper UI init use self->context and self->calc_state directly
 // The OLD code used a broken offsetof trick that assumed the UIDriver was
 // embedded inside HostAppState. It wasn't driver is a separate stack var.
@@ -82,8 +92,9 @@ static int host_ui_init(UIDriver* self) {
     ctx->history_pos = -1;
     ctx->last_event = UI_EVENT_INIT;
 
-    // Switch to terminal alternate screen buffer (creates a clean "window")
-    if (self->display->text_cols > 0) {
+    // Switch to terminal alternate screen buffer (creates a clean "window").
+    // Only for real TTYs: on a pipe the alt-screen codes are just garbage.
+    if (self->display->text_cols > 0 && stdout_is_tty()) {
         fprintf(stdout, "\033[?1049h");  // Save screen + switch to alt buffer
         fflush(stdout);
     }
@@ -104,7 +115,7 @@ static int host_ui_init(UIDriver* self) {
 static void host_ui_deinit(UIDriver* self) {
     if (!self) return;
     // Restore terminal main screen buffer (restores previous terminal content)
-    if (self->display && self->display->text_cols > 0) {
+    if (self->display && self->display->text_cols > 0 && stdout_is_tty()) {
         fprintf(stdout, "\033[?1049l");  // Restore main screen buffer
         fflush(stdout);
     }
@@ -128,6 +139,10 @@ static int host_run_loop(UIDriver* self) {
 
         if (self->input->key_available && self->input->key_available(self->input)) {
             uint32_t key = self->input->read_key(self->input);
+            if (key == UI_KEY_EOF) {
+                running = 0;   // stdin exhausted (piped input): clean exit
+                continue;
+            }
             if (key == UI_KEY_ESCAPE) {
                 clock_t current_time = clock();
                 double elapsed = (double)(current_time - last_esc_time) / CLOCKS_PER_SEC;
@@ -193,6 +208,59 @@ static void host_render(const UIDriver* self) {
     }
 }
 
+// ─── Non-TTY (pipe) mode helpers ───────────────────────────────
+
+static int stdout_is_tty(void) {
+#ifdef _WIN32
+    return _isatty(_fileno(stdout));
+#else
+    return isatty(STDOUT_FILENO);
+#endif
+}
+
+static int stdin_is_tty(void) {
+#ifdef _WIN32
+    return _isatty(_fileno(stdin));
+#else
+    return isatty(STDIN_FILENO);
+#endif
+}
+
+/* Line-oriented batch evaluation for piped input (no TTY required):
+ * reads one expression per line from stdin, prints "expr = result"
+ * (or "expr ! error") to stdout, exits cleanly on EOF. One shared
+ * CalculatorState keeps Ans and variables alive across lines, same
+ * as an interactive session. */
+static int run_batch_mode(void) {
+    CalculatorState state;
+    memset(&state, 0, sizeof(state));
+
+    char line[512];
+    while (fgets(line, (int)sizeof(line), stdin)) {
+        size_t len = strlen(line);
+        while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r')) {
+            line[--len] = '\0';
+        }
+        if (len == 0) continue;  // blank line: no-op
+
+        state.flags = 0;  // clear sticky error flags for this line
+        bool ok = false;
+        double result = parse_expression(line, &state, &ok);
+
+        if (ok) {
+            printf("%s = %.10g\n", line, result);
+        } else if (state.flags & 2) {
+            printf("%s ! Division by zero\n", line);
+        } else if (state.flags & 4) {
+            printf("%s ! Domain error\n", line);
+        } else {
+            printf("%s ! Invalid expression\n", line);
+        }
+        fflush(stdout);
+    }
+    return 0;
+}
+
 // Main
 int main(int argc, char* argv[]) {
 #ifdef _WIN32
@@ -219,6 +287,12 @@ int main(int argc, char* argv[]) {
 #endif
             return 0;
         }
+    }
+
+    /* Pipe mode: stdin is not a TTY and no explicit UI mode was requested →
+     * run as a line-oriented batch calculator. No ANSI, no UI loop. */
+    if (!use_terminal && !use_sdl && !stdin_is_tty()) {
+        return run_batch_mode();
     }
 
     HostAppState state;

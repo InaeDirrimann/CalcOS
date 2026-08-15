@@ -52,6 +52,7 @@ typedef struct InputDriver InputDriver;
 #define UI_KEY_F10       0x00010029
 #define UI_KEY_F11       0x0001002A
 #define UI_KEY_F12       0x0001002B
+#define UI_KEY_EOF       0x0001001A  /* stdin exhausted (piped input) */
 
 /*
  * InputDriver pure virtual interface for user input.

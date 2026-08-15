@@ -48,6 +48,7 @@ typedef struct {
     uint8_t  escape_buf[8]; // Buffer for parsing escape sequences
     int      escape_len;
     int      raw_mode_enabled;
+    int      eof;           // stdin exhausted (piped input)
 } HostInputContext;
 
 // Forward declarations
@@ -105,6 +106,7 @@ static DWORD g_original_console_mode = 0;
 
 static void term_enable_raw_mode(void) {
 #ifndef _WIN32
+    if (!isatty(STDIN_FILENO)) return; // pipe input: no termios to configure
     struct termios raw;
     tcgetattr(STDIN_FILENO, &g_original_termios);
     raw = g_original_termios;
@@ -124,6 +126,7 @@ static void term_enable_raw_mode(void) {
 
 static void term_disable_raw_mode(void) {
 #ifndef _WIN32
+    if (!isatty(STDIN_FILENO)) return; // pipe: never configured, never restore
     tcsetattr(STDIN_FILENO, TCSAFLUSH, &g_original_termios);
 #else
     HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
@@ -220,7 +223,10 @@ static uint32_t host_read_key(const InputDriver* self) {
     // Terminal input: read raw bytes and parse
     char c;
 #ifndef _WIN32
-    if (read(STDIN_FILENO, &c, 1) <= 0) return UI_KEY_NONE;
+    if (read(STDIN_FILENO, &c, 1) <= 0) {
+        ctx->eof = 1;                    // stdin exhausted: signal the UI loop
+        return UI_KEY_EOF;
+    }
 #else
     if (!_kbhit()) return UI_KEY_NONE;
     c = (char)_getch();
