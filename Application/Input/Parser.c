@@ -917,10 +917,13 @@ static double parse_identifier(Tokenizer* tok, CalculatorState* state, bool* suc
             return local_randn();
         }
 
-        // Statistical functions: mean, median, var, cov, corr
+        // Statistical functions: mean, median, var, std, min, max, cov, corr
         if ((id_tok.length == 4 && mystrncmp(id_tok.start, "mean", 4) == 0) ||
             (id_tok.length == 6 && mystrncmp(id_tok.start, "median", 6) == 0) ||
             (id_tok.length == 3 && mystrncmp(id_tok.start, "var", 3) == 0) ||
+            (id_tok.length == 3 && mystrncmp(id_tok.start, "std", 3) == 0) ||
+            (id_tok.length == 3 && mystrncmp(id_tok.start, "min", 3) == 0) ||
+            (id_tok.length == 3 && mystrncmp(id_tok.start, "max", 3) == 0) ||
             (id_tok.length == 3 && mystrncmp(id_tok.start, "cov", 3) == 0) ||
             (id_tok.length == 4 && mystrncmp(id_tok.start, "corr", 4) == 0)) {
             
@@ -968,7 +971,36 @@ static double parse_identifier(Tokenizer* tok, CalculatorState* state, bool* suc
                     double diff = args[i] - mean_val;
                     sq_sum += diff * diff;
                 }
-                return sq_sum / (arg_count - 1);
+                return sq_sum / (arg_count - 1);  // sample variance (n-1)
+            } else if (id_tok.length == 3 && mystrncmp(id_tok.start, "std", 3) == 0) {
+                if (arg_count <= 1) return 0.0;
+                double sum = 0.0;
+                for (int i = 0; i < arg_count; i++) sum += args[i];
+                double mean_val = sum / arg_count;
+                double sq_sum = 0.0;
+                for (int i = 0; i < arg_count; i++) {
+                    double diff = args[i] - mean_val;
+                    sq_sum += diff * diff;
+                }
+                double v = sq_sum / (arg_count - 1);  // sample std (matches var())
+                if (v <= 0.0) return 0.0;
+                double r = v;
+                for (int i = 0; i < 8; i++) r = 0.5 * (r + v / r);
+                return r;
+            } else if (id_tok.length == 3 && mystrncmp(id_tok.start, "min", 3) == 0) {
+                if (arg_count == 0) return 0.0;
+                double m = args[0];
+                for (int i = 1; i < arg_count; i++) {
+                    if (args[i] < m) m = args[i];
+                }
+                return m;
+            } else if (id_tok.length == 3 && mystrncmp(id_tok.start, "max", 3) == 0) {
+                if (arg_count == 0) return 0.0;
+                double m = args[0];
+                for (int i = 1; i < arg_count; i++) {
+                    if (args[i] > m) m = args[i];
+                }
+                return m;
             } else if (id_tok.length == 3 && mystrncmp(id_tok.start, "cov", 3) == 0) {
                 if (arg_count < 4 || (arg_count % 2 != 0)) {
                     *success = false;
@@ -1090,11 +1122,25 @@ static double parse_identifier(Tokenizer* tok, CalculatorState* state, bool* suc
             double arg = parse_precedence(tok, state, PREC_NONE, success);
             if (tokenizer_consume(tok).type != TOKEN_RPAREN) { *success = false; return 0.0; }
             if (arg < 0.0) { *success = false; return 0.0; }
-            double res = arg;
-            if (arg > 0.0) {
-                for (int i = 0; i < 8; i++) res = 0.5 * (res + arg / res);
-            }
-            return res;
+            return local_sqrt(arg);
+        }
+        // abs(x)
+        if (id_tok.length == 3 && mystrncmp(id_tok.start, "abs", 3) == 0) {
+            double arg = parse_precedence(tok, state, PREC_NONE, success);
+            if (tokenizer_consume(tok).type != TOKEN_RPAREN) { *success = false; return 0.0; }
+            return local_abs(arg);
+        }
+        // floor(x)
+        if (id_tok.length == 5 && mystrncmp(id_tok.start, "floor", 5) == 0) {
+            double arg = parse_precedence(tok, state, PREC_NONE, success);
+            if (tokenizer_consume(tok).type != TOKEN_RPAREN) { *success = false; return 0.0; }
+            return local_floor(arg);
+        }
+        // ceil(x)
+        if (id_tok.length == 4 && mystrncmp(id_tok.start, "ceil", 4) == 0) {
+            double arg = parse_precedence(tok, state, PREC_NONE, success);
+            if (tokenizer_consume(tok).type != TOKEN_RPAREN) { *success = false; return 0.0; }
+            return local_ceil(arg);
         }
         // fact(x) or factorial(x)
         if ((id_tok.length == 4 && mystrncmp(id_tok.start, "fact", 4) == 0) ||
@@ -1112,8 +1158,12 @@ static double parse_identifier(Tokenizer* tok, CalculatorState* state, bool* suc
         // 2.x Fallback to plugin custom functions
         if (state && state->custom_lookup) {
             char fn_name[16];
-            if (id_tok.length < 16U) {
-                for (uint32_t i = 0; i < id_tok.length; i++) fn_name[i] = id_tok.start[i];
+            if (id_tok.length > 0 && id_tok.length < 16U) {
+                // Explicit dual bound: the < 16U guard alone trips GCC's
+                // -Wstringop-overflow path analysis under some inlining.
+                for (uint32_t i = 0; i < (uint32_t)id_tok.length && i < sizeof(fn_name) - 1; i++) {
+                    fn_name[i] = id_tok.start[i];
+                }
                 fn_name[id_tok.length] = '\0';
                 void* custom_fn_ptr = state->custom_lookup(state->custom_lookup_ctx, fn_name);
                 if (custom_fn_ptr) {
@@ -1137,6 +1187,9 @@ static double parse_identifier(Tokenizer* tok, CalculatorState* state, bool* suc
     if (!found) {
         if (id_tok.length == 2 && id_tok.start[0] == 'p' && id_tok.start[1] == 'i') {
             return 3.141592653589793;
+        } else if (id_tok.length == 3 &&
+                   id_tok.start[0] == 'p' && id_tok.start[1] == 'h' && id_tok.start[2] == 'i') {
+            return 1.6180339887498948482;  // phi: golden ratio
         } else if (id_tok.length == 1 && id_tok.start[0] == 'e') {
             return 2.718281828459045;
         } else if (id_tok.length == 3 &&
