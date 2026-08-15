@@ -63,11 +63,52 @@ static inline uint64_t rotl64(const uint64_t x, int k) {
 #define PI 3.14159265358979323846
 #define INV_PI 0.31830988618379067154
 
+/* Exact constants: PI_HI is the double nearest to pi; PI_LO is the true
+ * residual (pi - PI_HI = 1.2246467991473532e-16). INV_PI_LO likewise.
+ * These come from decimal expansion, NOT decimal truncation of the print. */
+#define PI_HI 3.141592653589793
+#define PI_LO 1.2246467991473532e-16
+#define INV_PI_HI 0.3183098861837907
+#define INV_PI_LO -1.9678676675182486e-17
+
+/* Exact two-product via Veltkamp splitting (no FMA required, bare-metal safe):
+ * hi + lo == a*b exactly to ~1e-31. */
+static inline void two_product(double a, double b, double* hi, double* lo) {
+    const double C = 134217729.0; /* 2^27 + 1 */
+    double p = a * b;
+    double a_hi = C * a - (C * a - a);
+    double a_lo = a - a_hi;
+    double b_hi = C * b - (C * b - b);
+    double b_lo = b - b_hi;
+    *hi = p;
+    *lo = ((a_hi * b_hi - p) + a_hi * b_lo + a_lo * b_hi) + a_lo * b_lo;
+}
+
+/* Range reduction: xr = x - k*pi, exact to ~1e-14 even at |x| ~ 1e18, with k
+ * selected correctly for |x| up to ~1e18 (beyond that, the int64 cast would
+ * be UB, so we fail fast with NaN instead of returning garbage). */
+static inline double reduce_pi(double x, double* k_out) {
+    if (x > 2.8e19 || x < -2.8e19) {
+        *k_out = 0.0;
+        return calc_nan();
+    }
+    double ih, il;
+    two_product(x, INV_PI_HI, &ih, &il);
+    double k_d = (double)((int64_t)(ih + il + x * INV_PI_LO + (x >= 0.0 ? 0.5 : -0.5)));
+    double ph, pl;
+    two_product(k_d, PI_HI, &ph, &pl);
+    double xr = (x - ph) - (pl + k_d * PI_LO);
+    *k_out = k_d;
+    return xr;
+}
+
 static inline double local_sin(double x) {
-    double k_d = (double)((int64_t)(x * INV_PI + (x >= 0.0 ? 0.5 : -0.5)));
-    double xr = x - k_d * PI;
+    double k_d;
+    double xr = reduce_pi(x, &k_d);
     double z2 = xr * xr;
-    double val = xr * (1.0 + z2 * (-0.16666666666666666 + z2 * (0.008333333333333333 + z2 * (-0.0001984126984126984 + z2 * (0.00000275573192239859 + z2 * (-2.50521083854417e-8))))));
+    // Taylor through x^19 (all alternating terms!): worst-case error at
+    // |xr| = pi/2 ~4e-16.
+    double val = xr * (1.0 + z2 * (-0.16666666666666666 + z2 * (0.008333333333333333 + z2 * (-0.0001984126984126984 + z2 * (0.00000275573192239859 + z2 * (-2.50521083854417e-8 + z2 * (1.6059043836821613e-10 + z2 * (-7.647163731819816e-13 + z2 * (2.8114572543455206e-15 + z2 * -8.2206352466243295e-18)))))))));
     int64_t k_i = (int64_t)k_d;
     if (k_i & 1) {
         val = -val;
@@ -76,10 +117,13 @@ static inline double local_sin(double x) {
 }
 
 static inline double local_cos(double x) {
-    double k_d = (double)((int64_t)(x * INV_PI + (x >= 0.0 ? 0.5 : -0.5)));
-    double xr = x - k_d * PI;
+    double k_d;
+    double xr = reduce_pi(x, &k_d);
     double z2 = xr * xr;
-    double val = 1.0 + z2 * (-0.5 + z2 * (0.041666666666666664 + z2 * (-0.0013888888888888889 + z2 * (0.0000248015873015873 + z2 * (-2.75573192239859e-7)))));
+    // Taylor through x^22 (all alternating terms!): worst-case error at
+    // |xr| = pi/2 ~3e-20. NOTE: 1/12! = 2.08767569878681e-9, 1/14! =
+    // 1.1470745597729725e-11 (e-12/e-13 versions silently no-op).
+    double val = 1.0 + z2 * (-0.5 + z2 * (0.041666666666666664 + z2 * (-0.0013888888888888889 + z2 * (0.0000248015873015873 + z2 * (-2.75573192239859e-7 + z2 * (2.08767569878681e-9 + z2 * (-1.1470745597729725e-11 + z2 * (4.779477332387385e-14 + z2 * (-1.5619206968586225e-16 + z2 * 4.1103176233121648e-19)))))))));
     int64_t k_i = (int64_t)k_d;
     if (k_i & 1) {
         val = -val;
@@ -100,7 +144,9 @@ static inline double local_exp(double x) {
     double k_d = (double)((int64_t)(x * log2_e + (x >= 0.0 ? 0.5 : -0.5)));
     double f = x * log2_e - k_d;
     double z = f * ln2;
-    double ez = 1.0 + z * (1.0 + z * (0.5 + z * (0.16666666666666666 + z * (0.041666666666666664 + z * (0.008333333333333333 + z * (0.0013888888888888889 + z * 0.0001984126984126984))))));
+    // Taylor through z^11: worst-case error at |z| = ln2/2 ~1.7e-14
+    // (was ~6e-12 through z^9, visible as 2^0.5 being off by 1.3e-11).
+    double ez = 1.0 + z * (1.0 + z * (0.5 + z * (0.16666666666666666 + z * (0.041666666666666664 + z * (0.008333333333333333 + z * (0.0013888888888888889 + z * (0.0001984126984126984 + z * (2.48015873015873e-05 + z * (2.7557319223985893e-06 + z * (2.7557319223985893e-07 + z * 2.505210838544172e-08))))))))));
     
     int64_t k = (int64_t)k_d;
     union {
@@ -490,7 +536,9 @@ static double local_atan(double x) {
         }
     }
     double x2 = abs_x * abs_x;
-    double series = abs_x * (1.0 + x2 * (-0.3333333333333333 + x2 * (0.2 + x2 * (-0.14285714285714285 + x2 * (0.1111111111111111 + x2 * (-0.09090909090909091 + x2 * (0.07692307692307693 + x2 * -0.06666666666666667)))))));
+    // atan series through x^19: worst-case error ~4.6e-14 at the reduction
+    // pivot (was ~1e-11, visible as atan(1) being off at the 11th digit).
+    double series = abs_x * (1.0 + x2 * (-0.3333333333333333 + x2 * (0.2 + x2 * (-0.14285714285714285 + x2 * (0.1111111111111111 + x2 * (-0.09090909090909091 + x2 * (0.07692307692307693 + x2 * (-0.06666666666666667 + x2 * (0.058823529411764705 + x2 * -0.05263157894736842)))))))));
     double res = reciprocal ? (PI / 2.0 - (offset + series)) : (offset + series);
     return x < 0.0 ? -res : res;
 }
