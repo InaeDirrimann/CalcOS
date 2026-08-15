@@ -426,6 +426,7 @@ static double parse_number(Tokenizer* tok, CalculatorState* state, bool* success
 static double parse_unary(Tokenizer* tok, CalculatorState* state, bool* success);
 static double parse_grouping(Tokenizer* tok, CalculatorState* state, bool* success);
 static double parse_binary(Tokenizer* tok, CalculatorState* state, double left, bool* success);
+static double parse_implicit_mul(Tokenizer* tok, CalculatorState* state, double left, bool* success);
 static double parse_identifier(Tokenizer* tok, CalculatorState* state, bool* success);
 static double parse_factorial(Tokenizer* tok, CalculatorState* state, double left, bool* success);
 static double parse_unary_sqrt(Tokenizer* tok, CalculatorState* state, bool* success);
@@ -461,12 +462,12 @@ static const ParseRule rules[] = {
     { NULL,             parse_binary, PREC_FACTOR },
     // TOKEN_POWER (exponentiation right-associative, highest precedence)
     { NULL,             parse_binary, PREC_UNARY },
-    // TOKEN_LPAREN
-    { parse_grouping,   NULL,         PREC_NONE },
+    // TOKEN_LPAREN (also implicit multiplication: 2(3+4))
+    { parse_grouping,   parse_implicit_mul, PREC_FACTOR },
     // TOKEN_RPAREN
     { NULL,             NULL,         PREC_NONE },
-    // TOKEN_IDENTIFIER
-    { parse_identifier, NULL,         PREC_NONE },
+    // TOKEN_IDENTIFIER (also implicit multiplication: 2x, 3sin(x))
+    { parse_identifier, parse_implicit_mul, PREC_FACTOR },
     // TOKEN_COMMA
     { NULL,             NULL,         PREC_NONE },
     // TOKEN_EQUALS
@@ -677,6 +678,15 @@ static double parse_binary(Tokenizer* tok, CalculatorState* state, double left, 
             *success = false;
             return 0.0;
     }
+}
+
+/* Implicit multiplication: "2(3+4)" -> 2*(3+4), "2x" -> 2*x, "2sin(x)" -> 2*sin(x).
+ * Right operand parses at PREC_UNARY so it binds exactly like an explicit '*'
+ * (whose right operand also parses at PREC_UNARY). */
+static double parse_implicit_mul(Tokenizer* tok, CalculatorState* state, double left, bool* success) {
+    double right = parse_precedence(tok, state, PREC_UNARY, success);
+    if (!*success) return 0.0;
+    return left * right;
 }
 
 static double parse_identifier(Tokenizer* tok, CalculatorState* state, bool* success) {
