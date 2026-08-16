@@ -50,7 +50,10 @@ TARGET_SSE4_1 void sin_sse(CalculatorState* state, const double* a, double* resu
         __m128d vx = _mm_loadu_pd(&a[i]);
         __m128d v_prod = _mm_mul_pd(vx, v_inv_pi);
         __m128d v_offset = _mm_blendv_pd(v_neg_half, v_half, _mm_cmpge_pd(vx, v_zero));
-        __m128d v_k = _mm_round_pd(_mm_add_pd(v_prod, v_offset), _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
+        // truncate (prod +/- 0.5), matching the scalar path's (int64_t) cast.
+        // TO_NEAREST_INT ties-to-even misfires at exact half-integers: for x = pi,
+        // prod = 1.0, prod + 0.5 = 1.5 -> k = 2 -> xr = -pi -> 4.7e-4 Taylor error.
+        __m128d v_k = _mm_round_pd(_mm_add_pd(v_prod, v_offset), _MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC);
 
         __m128d vxr = _mm_sub_pd(vx, _mm_mul_pd(v_k, v_pi));
         __m128d vz2 = _mm_mul_pd(vxr, vxr);
@@ -102,7 +105,10 @@ TARGET_AVX2 void sin_avx2(CalculatorState* state, const double* a, double* resul
         __m256d v_prod = _mm256_mul_pd(vx, v_inv_pi);
         __m256d v_offset = _mm256_blendv_pd(v_neg_half, v_half, _mm256_cmp_pd(vx, v_zero, _CMP_GE_OQ));
         // AVX2 round:
-        __m256d v_k = _mm256_round_pd(_mm256_add_pd(v_prod, v_offset), _MM_FROUND_TO_NEAREST_INT |_MM_FROUND_NO_EXC);
+        // truncate (prod +/- 0.5), matching the scalar path's (int64_t) cast.
+        // TO_NEAREST_INT ties-to-even misfires at exact half-integers: for x = pi,
+        // prod = 1.0, prod + 0.5 = 1.5 -> k = 2 -> xr = -pi -> 4.7e-4 Taylor error.
+        __m256d v_k = _mm256_round_pd(_mm256_add_pd(v_prod, v_offset), _MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC);
 
         __m256d vxr = _mm256_sub_pd(vx, _mm256_mul_pd(v_k, v_pi));
         __m256d vz2 = _mm256_mul_pd(vxr, vxr);
