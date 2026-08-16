@@ -215,6 +215,43 @@ target_link_libraries(test_plugin_system PRIVATE calc_static)
 target_include_directories(test_plugin_system PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
 target_compile_definitions(test_plugin_system PRIVATE HOST_APP=1)
 
+# --- Additional unit tests (were in Tests/Unit but never wired into the build) ---
+add_executable(test_addition Tests/Unit/TestAddition.c)
+target_link_libraries(test_addition PRIVATE calc_static)
+target_include_directories(test_addition PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
+target_compile_definitions(test_addition PRIVATE HOST_APP=1)
+
+add_executable(test_subtraction Tests/Unit/TestSubtraction.c)
+target_link_libraries(test_subtraction PRIVATE calc_static)
+target_include_directories(test_subtraction PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
+target_compile_definitions(test_subtraction PRIVATE HOST_APP=1)
+
+add_executable(test_simd Tests/Unit/TestSIMD.c)
+target_link_libraries(test_simd PRIVATE calc_static)
+target_include_directories(test_simd PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
+target_compile_definitions(test_simd PRIVATE HOST_APP=1)
+
+add_executable(test_tokenizer Tests/Unit/TestTokenizer.c)
+target_link_libraries(test_tokenizer PRIVATE calc_static)
+target_include_directories(test_tokenizer PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
+
+add_executable(test_complex Tests/Unit/TestComplex.c)
+target_link_libraries(test_complex PRIVATE calc_static)
+target_include_directories(test_complex PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
+target_compile_definitions(test_complex PRIVATE HOST_APP=1)
+
+add_executable(test_complex_divzero Tests/Unit/TestComplexDivZero.c)
+target_link_libraries(test_complex_divzero PRIVATE calc_static)
+target_include_directories(test_complex_divzero PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
+
+add_executable(test_ist_canary Tests/Unit/TestISTCanary.c)
+target_link_libraries(test_ist_canary PRIVATE calc_static)
+target_include_directories(test_ist_canary PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
+
+add_executable(test_thread_local Tests/Unit/TestThreadLocalSymbols.c)
+target_link_libraries(test_thread_local PRIVATE calc_static)
+target_include_directories(test_thread_local PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
+
 # Dynamic Plugin Compilation & Staging Target
 add_library(sample_plugin SHARED Tests/Unit/SamplePlugin.cpp)
 target_link_libraries(sample_plugin PRIVATE calc_static)
@@ -235,7 +272,7 @@ endif()
 
 # Apply CALC_TINY_MEM size optimizations globally to all targets
 if(CALC_TINY_MEM)
-    foreach(tgt calc_static calc_shared calc_terminal test_stats_rng test_parse test_complex_calc test_benchmark test_cpp_wrapper)
+    foreach(tgt calc_static calc_shared calc_terminal test_stats_rng test_parse test_complex_calc test_benchmark test_cpp_wrapper test_addition test_subtraction test_simd test_tokenizer test_complex test_complex_divzero test_ist_canary test_thread_local)
         if(TARGET ${tgt})
             target_compile_definitions(${tgt} PRIVATE CALC_TINY_MEM=1)
             if(MSVC)
