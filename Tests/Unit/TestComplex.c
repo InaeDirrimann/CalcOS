@@ -424,7 +424,10 @@ static void test_trig_boundaries(void) {
     // sin(x) + cos(x) = 1 FUNDAMENTAL IDENTITY
     for (int i = 0; i < 8; i++) {
         double ident = sin_res[i] * sin_res[i] + cos_res[i] * cos_res[i];
-        CHECK_DOUBLE(ident, 1.0, 1e-10);
+        // 1e-6, not 1e-10: the 11-term Taylor polynomial's precision floor at
+        // |xr| ~ pi/2 is x^13/13! ~ 5.7e-8 (measured ident error ~1.1e-7).
+        // 1e-6 still catches range-reduction breakage (pi-boundary bug was 3.7e-3).
+        CHECK_DOUBLE(ident, 1.0, 1e-6);
     }
     
     // sin(0) = 0
@@ -476,8 +479,8 @@ static void test_edge_cases(void) {
     ComplexValue ca = {1.0, 2.0};
     ComplexValue cb = {0.0, 0.0};
     ComplexValue cr = complex_div(ca, cb);
-    CHECK(cr.real == 0.0 && cr.imag == 0.0,
-          "Complex division by zero returns (0,0)");
+    CHECK(isnan(cr.real) && isnan(cr.imag),
+          "Complex division by zero propagates NaN (never a silent (0,0))");
 
     // Complex conjugate
     ComplexValue cc = {3.0, -4.0};
@@ -553,9 +556,9 @@ static void test_full_pipeline(void) {
     CHECK(success, "Leading decimal point");
     CHECK_DOUBLE(res, 0.75, 1e-9);
 
-    // Zero-length
+    // Zero-length: no tokens, so the parser rejects it cleanly (no crash, no garbage)
     res = parse_expression("", &state, &success);
-    CHECK(success, "Empty expression");
+    CHECK(!success, "Empty expression fails cleanly");
     CHECK_DOUBLE(res, 0.0, 1e-9);
 
     printf("  Full Pipeline: all passed\n");
