@@ -23,30 +23,30 @@
 #include <math.h>
 
 // Include project headers (adjust paths as needed)
-#include "../Kernel/State/CalculatorState.h"
-#include "../Kernel/State/NumericValue.h"
-#include "../Kernel/Operations/Arithmetic/Addition.h"
-#include "../Kernel/Operations/Arithmetic/Subtraction.h"
-#include "../Kernel/Operations/Arithmetic/Multiplication.h"
-#include "../Kernel/Operations/Arithmetic/Division.h"
-#include "../Kernel/Operations/Complex/ComplexOps.h"
-#include "../Kernel/Operations/Complex/ComplexTrig.h"
-#include "../Kernel/Operations/Rational/RationalOps.h"
-#include "../Kernel/Operations/Exponential/Exponentiation.h"
-#include "../Kernel/Operations/Exponential/Logarithm.h"
-#include "../Kernel/Operations/Trigonometry/Sine.h"
-#include "../Kernel/Operations/Trigonometry/Cosine.h"
-#include "../Kernel/Operations/Trigonometry/Tangent.h"
-#include "../Kernel/Operations/BigInt/BigInt.h"
-#include "../Kernel/Operations/NumberTheory/NumberTheory.h"
-#include "../Kernel/Operations/RNG/RNG.h"
-#include "../Kernel/Operations/Statistics/Statistics.h"
-#include "../Kernel/Operations/Calculus/Calculus.h"
-#include "../Kernel/Operations/ODE/ODE.h"
-#include "../Kernel/Core/CPU/CPUID.h"
-#include "../Infrastructure/Utils/MemoryUtils.h"
-#include "../Application/Input/Parser.h"
-#include "../Kernel/State/History.h"
+#include "../../Kernel/State/CalculatorState.h"
+#include "../../Kernel/State/NumericValue.h"
+#include "../../Kernel/Operations/Arithmetic/Addition.h"
+#include "../../Kernel/Operations/Arithmetic/Subtraction.h"
+#include "../../Kernel/Operations/Arithmetic/Multiplication.h"
+#include "../../Kernel/Operations/Arithmetic/Division.h"
+#include "../../Kernel/Operations/Complex/ComplexOps.h"
+#include "../../Kernel/Operations/Complex/ComplexTrig.h"
+#include "../../Kernel/Operations/Rational/RationalOps.h"
+#include "../../Kernel/Operations/Exponential/Exponentiation.h"
+#include "../../Kernel/Operations/Exponential/Logarithm.h"
+#include "../../Kernel/Operations/Trigonometry/Sine.h"
+#include "../../Kernel/Operations/Trigonometry/Cosine.h"
+#include "../../Kernel/Operations/Trigonometry/Tangent.h"
+#include "../../Kernel/Operations/BigInt/BigInt.h"
+#include "../../Kernel/Operations/NumberTheory/NumberTheory.h"
+#include "../../Kernel/Operations/RNG/RNG.h"
+#include "../../Kernel/Operations/Statistics/Statistics.h"
+#include "../../Kernel/Operations/Calculus/Calculus.h"
+#include "../../Kernel/Operations/ODE/ODE.h"
+#include "../../Kernel/Core/CPU/CPUID.h"
+#include "../../Infrastructure/Utils/MemoryUtils.h"
+#include "../../Application/Input/Parser.h"
+#include "../../Kernel/State/History.h"
 
 // ============================================================
 // ASSERTION ENGINE
@@ -266,7 +266,7 @@ static void test_parser_complex(void) {
     // Deeply nested
     result = parse_expression("((((1 + 2) * (3 - 4)) / (5 + 6)) + 7) * (8 - 9)", &state, &success);
     CHECK(success, "Deeply nested parse should succeed");
-    CHECK_DOUBLE(result, -6.272727..., 1e-6);
+    CHECK_DOUBLE(result, -74.0 / 11.0, 1e-6);
 
     // Chained precedence
     result = parse_expression("1 + 2 * 3 + 4 * 5 + 6", &state, &success);
@@ -296,11 +296,11 @@ static void test_parser_complex(void) {
     // Constants
     result = parse_expression("pi * 2", &state, &success);
     CHECK(success, "pi constant");
-    CHECK_DOUBLE(result, 6.283185..., 1e-5);
+    CHECK_DOUBLE(result, 6.283185307179586, 1e-5);
 
     result = parse_expression("e", &state, &success);
     CHECK(success, "e constant");
-    CHECK_DOUBLE(result, 2.71828..., 1e-5);
+    CHECK_DOUBLE(result, 2.718281828459045, 1e-5);
 
     printf("  Parser Complex: all passed\n");
 }
@@ -386,12 +386,11 @@ static void test_nan_safety(void) {
     CHECK((u.i & 0x7FF0000000000000ULL) == 0x7FF0000000000000ULL,
           "1 + nan should be NaN");
 
-    // Division by zero check
-    double div_res = div_scalar(&state, &a[0], &b[0], &res[0], 1);
-    // Actually div_scalar takes pointers and count... 
-    // The function already handles this in the test:
-    // tested division by zero in the parser test above
-    (void)div_res;
+    // NaN / 5 should stay NaN (div_scalar writes into res, returns void)
+    div_scalar(&state, &a[0], &b[0], &res[0], 1);
+    u.d = res[0];
+    CHECK((u.i & 0x7FF0000000000000ULL) == 0x7FF0000000000000ULL,
+          "nan / 5 should be NaN");
     
     printf("  NaN Safety: all passed\n");
 }
