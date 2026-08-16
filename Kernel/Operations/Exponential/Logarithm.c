@@ -51,28 +51,12 @@ void log_scalar(CalculatorState* state, const double* a, double* result, uint32_
     }
 }
 
-void log_sse(CalculatorState* state, const double* a, double* result, uint32_t count) {
-    // SSE fallback processing elements one by one with inline scalar or just routing to scalar
-    // to preserve complexity while keeping performance optimal.
-    log_scalar(state, a, result, count);
-}
-
-void log_avx2(CalculatorState* state, const double* a, double* result, uint32_t count) {
-    log_scalar(state, a, result, count);
-}
-
-void log_neon(CalculatorState* state, const double* a, double* result, uint32_t count) {
-    log_scalar(state, a, result, count);
-}
-
+// NOTE: no fake "_sse/_avx2/_neon" wrappers here anymore. The previous ones
+// just forwarded to scalar while the header claimed vectorization -- that's
+// a lie. log() has per-element domain branches (x<=0 -> -Inf/NaN + flag),
+// which need lane masks to vectorize correctly. Do that properly when a
+// bulk-log use case exists, not with forwarding stubs.
 void execute_logarithm(CalculatorState* state, const double* a, double* result, uint32_t count, const CPUFeatures* features) {
-    if (features->has_neon) {
-        log_neon(state, a, result, count);
-    } else if (features->has_avx2) {
-        log_avx2(state, a, result, count);
-    } else if (features->has_sse2) {
-        log_sse(state, a, result, count);
-    } else {
-        log_scalar(state, a, result, count);
-    }
+    (void)features;
+    log_scalar(state, a, result, count);
 }
