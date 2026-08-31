@@ -1,6 +1,7 @@
 #include "TestAssert.h"
 #include "../../Kernel/State/CalculatorState.h"
 #include "../../Kernel/Operations/Arithmetic/Subtraction.h"
+#include "../../Kernel/Core/CPU/CPUID.h"
 #include "../../Infrastructure/Utils/MemoryUtils.h"
 
 int main() {
@@ -28,13 +29,19 @@ int main() {
     assert_double_eq(res[2], 1.0);
     assert_double_eq(res[3], -5.5);
 
-    // 3. Test AVX2 subtraction
-    fast_memset(res, 0, sizeof(res));
-    sub_avx2(&state, a, b, res, 4);
-    assert_double_eq(res[0], 8.0);
-    assert_double_eq(res[1], -2.0);
-    assert_double_eq(res[2], 1.0);
-    assert_double_eq(res[3], -5.5);
+    // 3. Test AVX2 subtraction (direct call SIGILLs on non-AVX2 CPUs, so probe first)
+    CPUFeatures features;
+    cpu_detect_features(&features);
+    if (features.has_avx2) {
+        fast_memset(res, 0, sizeof(res));
+        sub_avx2(&state, a, b, res, 4);
+        assert_double_eq(res[0], 8.0);
+        assert_double_eq(res[1], -2.0);
+        assert_double_eq(res[2], 1.0);
+        assert_double_eq(res[3], -5.5);
+    } else {
+        printf("  (skipped: no AVX2 on this CPU)\n");
+    }
 
     // Print summary
     printf("TestSubtraction summary: %d/%d assertions passed.\n", 

@@ -10,7 +10,7 @@
 #   docker run --rm calc-engine:latest --cli
 #
 # THE FLEX: A 2MB container running a calculator that originated
-# as a bare-metal OS kernel. Containers are just lightweight VMs. 💀
+# as a bare-metal OS kernel. Containers are just lightweight VMs.
 # ═══════════════════════════════════════════════════════════════════════
 
 # ── Stage 1: Build environment ──
@@ -53,7 +53,7 @@ RUN ls -lh /src/calc_web.wasm
 # ── Stage 4: Production scratch container ──
 # A completely blank container with ZERO system libraries.
 # The binary is statically linked — it IS the OS as far as this
-# container is concerned. No libc, no shell, no nothing. 💀
+# container is concerned. No libc, no shell, no nothing.
 FROM scratch AS production_container
 COPY --from=desktop_builder /src/calc_static /calc_service
 ENTRYPOINT ["/calc_service", "--cli"]

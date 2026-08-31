@@ -2,18 +2,17 @@ import os
 import sys
 from pathlib import Path
 
-# Force UTF-8 stdout encoding for Windows terminal unicode support! 🏎️
+# Force UTF-8 stdout encoding for Windows terminal unicode support!
 if hasattr(sys.stdout, 'reconfigure'):
     try:
         sys.stdout.reconfigure(encoding='utf-8')
     except Exception:
         pass
 
-# THE ULTRA-FAST NO-DEPENDENCY PROJECT PACKAGER 🏎️
+# THE ULTRA-FAST NO-DEPENDENCY PROJECT PACKAGER 
 # PACKAGES THE HOLY REPOSITORY INTO A SINGLE PLAIN TEXT FILE FOR ANTISEPTIC STORAGE
 
 VERSION = "1.0.0"
-PROJECT_NAME = "Calculator"
 
 def generate_tree(dir_path, prefix=""):
     """Recursively generates a visual tree of the codebase."""
@@ -25,7 +24,7 @@ def generate_tree(dir_path, prefix=""):
     tree = []
     
     # Filter out build artifacts, git configurations, vendor dirs, and python temp folders
-    # DOGMA: If it's not source code WE WROTE, it doesn't go in the archive. 💀
+    # DOGMA: If it's not source code WE WROTE, it doesn't go in the archive.
     ignored = {".git", ".vs", "bin", "obj", "__pycache__", "Output", "DotNetPerf", 
                "build", "bench_runner", "test_runner", ".deepseek", "vcpkg", "packages",
                "node_modules", ".gemini", ".vscode", ".idea"}
@@ -44,9 +43,10 @@ def generate_tree(dir_path, prefix=""):
 def package_project():
     workspace = Path(__file__).resolve().parent.parent.parent
     script_dir = Path(__file__).resolve().parent
+    project_name = workspace.name
     output_dir = script_dir / "Output"
     output_dir.mkdir(exist_ok=True)
-    output_file = output_dir / f"{PROJECT_NAME}_v{VERSION}.txt"
+    output_file = output_dir / f"{project_name}_v{VERSION}.txt"
 
     # INTERACTIVE DASHBOARD WITH GORGEOUS HARDWARE STYLE ASCII
     print("\n" + "=" * 60)
@@ -78,7 +78,7 @@ def package_project():
 
     lines = []
     lines.append("=" * 80)
-    lines.append(f"[BOX] PROJECT SUBMISSION: {PROJECT_NAME} v{VERSION}")
+    lines.append(f"[BOX] PROJECT SUBMISSION: {project_name} v{VERSION}")
     lines.append(f"Generated on: {os.name} platform")
     lines.append("=" * 80)
     lines.append("\n[DIR] TREE STRUCTURE:")

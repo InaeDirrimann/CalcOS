@@ -63,11 +63,56 @@ static inline uint64_t rotl64(const uint64_t x, int k) {
 #define PI 3.14159265358979323846
 #define INV_PI 0.31830988618379067154
 
+/* Exact constants: PI_HI is the double nearest to pi; PI_LO is the true
+ * residual (pi - PI_HI = 1.2246467991473532e-16). INV_PI_LO likewise.
+ * These come from decimal expansion, NOT decimal truncation of the print. */
+#define PI_HI 3.141592653589793
+#define PI_LO 1.2246467991473532e-16
+#define INV_PI_HI 0.3183098861837907
+#define INV_PI_LO -1.9678676675182486e-17
+
+/* Exact two-product via Veltkamp splitting (no FMA required, bare-metal safe):
+ * hi + lo == a*b exactly to ~1e-31. */
+static inline void two_product(double a, double b, double* hi, double* lo) {
+    const double C = 134217729.0; /* 2^27 + 1 */
+    double p = a * b;
+    double a_hi = C * a - (C * a - a);
+    double a_lo = a - a_hi;
+    double b_hi = C * b - (C * b - b);
+    double b_lo = b - b_hi;
+    *hi = p;
+    *lo = ((a_hi * b_hi - p) + a_hi * b_lo + a_lo * b_hi) + a_lo * b_lo;
+}
+
+/* Range reduction: xr = x - k*pi, exact to ~1e-14 even at |x| ~ 1e18, with k
+ * selected correctly for |x| up to ~1e18 (beyond that, the int64 cast would
+ * be UB, so we fail fast with NaN instead of returning garbage). */
+static inline double reduce_pi(double x, double* k_out) {
+    if (x != x) { // NaN: every comparison below is false, and (int64_t)NaN is UB
+        *k_out = 0.0;
+        return calc_nan();
+    }
+    if (x > 2.8e19 || x < -2.8e19) {
+        *k_out = 0.0;
+        return calc_nan();
+    }
+    double ih, il;
+    two_product(x, INV_PI_HI, &ih, &il);
+    double k_d = (double)((int64_t)(ih + il + x * INV_PI_LO + (x >= 0.0 ? 0.5 : -0.5)));
+    double ph, pl;
+    two_product(k_d, PI_HI, &ph, &pl);
+    double xr = (x - ph) - (pl + k_d * PI_LO);
+    *k_out = k_d;
+    return xr;
+}
+
 static inline double local_sin(double x) {
-    double k_d = (double)((int64_t)(x * INV_PI + (x >= 0.0 ? 0.5 : -0.5)));
-    double xr = x - k_d * PI;
+    double k_d;
+    double xr = reduce_pi(x, &k_d);
     double z2 = xr * xr;
-    double val = xr * (1.0 + z2 * (-0.16666666666666666 + z2 * (0.008333333333333333 + z2 * (-0.0001984126984126984 + z2 * (0.00000275573192239859 + z2 * (-2.50521083854417e-8))))));
+    // Taylor through x^19 (all alternating terms!): worst-case error at
+    // |xr| = pi/2 ~4e-16.
+    double val = xr * (1.0 + z2 * (-0.16666666666666666 + z2 * (0.008333333333333333 + z2 * (-0.0001984126984126984 + z2 * (0.00000275573192239859 + z2 * (-2.50521083854417e-8 + z2 * (1.6059043836821613e-10 + z2 * (-7.647163731819816e-13 + z2 * (2.8114572543455206e-15 + z2 * -8.2206352466243295e-18)))))))));
     int64_t k_i = (int64_t)k_d;
     if (k_i & 1) {
         val = -val;
@@ -76,10 +121,13 @@ static inline double local_sin(double x) {
 }
 
 static inline double local_cos(double x) {
-    double k_d = (double)((int64_t)(x * INV_PI + (x >= 0.0 ? 0.5 : -0.5)));
-    double xr = x - k_d * PI;
+    double k_d;
+    double xr = reduce_pi(x, &k_d);
     double z2 = xr * xr;
-    double val = 1.0 + z2 * (-0.5 + z2 * (0.041666666666666664 + z2 * (-0.0013888888888888889 + z2 * (0.0000248015873015873 + z2 * (-2.75573192239859e-7)))));
+    // Taylor through x^22 (all alternating terms!): worst-case error at
+    // |xr| = pi/2 ~3e-20. NOTE: 1/12! = 2.08767569878681e-9, 1/14! =
+    // 1.1470745597729725e-11 (e-12/e-13 versions silently no-op).
+    double val = 1.0 + z2 * (-0.5 + z2 * (0.041666666666666664 + z2 * (-0.0013888888888888889 + z2 * (0.0000248015873015873 + z2 * (-2.75573192239859e-7 + z2 * (2.08767569878681e-9 + z2 * (-1.1470745597729725e-11 + z2 * (4.779477332387385e-14 + z2 * (-1.5619206968586225e-16 + z2 * 4.1103176233121648e-19)))))))));
     int64_t k_i = (int64_t)k_d;
     if (k_i & 1) {
         val = -val;
@@ -100,7 +148,9 @@ static inline double local_exp(double x) {
     double k_d = (double)((int64_t)(x * log2_e + (x >= 0.0 ? 0.5 : -0.5)));
     double f = x * log2_e - k_d;
     double z = f * ln2;
-    double ez = 1.0 + z * (1.0 + z * (0.5 + z * (0.16666666666666666 + z * (0.041666666666666664 + z * (0.008333333333333333 + z * (0.0013888888888888889 + z * 0.0001984126984126984))))));
+    // Taylor through z^11: worst-case error at |z| = ln2/2 ~1.7e-14
+    // (was ~6e-12 through z^9, visible as 2^0.5 being off by 1.3e-11).
+    double ez = 1.0 + z * (1.0 + z * (0.5 + z * (0.16666666666666666 + z * (0.041666666666666664 + z * (0.008333333333333333 + z * (0.0013888888888888889 + z * (0.0001984126984126984 + z * (2.48015873015873e-05 + z * (2.7557319223985893e-06 + z * (2.7557319223985893e-07 + z * 2.505210838544172e-08))))))))));
     
     int64_t k = (int64_t)k_d;
     union {
@@ -126,12 +176,45 @@ static inline double simple_ln(double x) {
     int k = ((u.i >> 52) & 0x7FF) - 1023;
     u.i = (u.i & 0x000FFFFFFFFFFFFFULL) | 0x3FF0000000000000ULL;
     double m = u.d;
+    if (m > 1.4142135623730951) { // 2^(1/2): pull m into [1, sqrt(2))
+        m *= 0.5;
+        k++;
+    }
     double num = m - 1.0;
     double den = m + 1.0;
     double z = num / den;
     double z2 = z * z;
-    double poly = z * (2.0 + z2 * (0.6666666666666666 + z2 * (0.4 + z2 * (0.2857142857142857 + z2 * 0.2222222222222222))));
+    // atanh series through z^15. With m in [1, sqrt(2)) the worst case is
+    // z = 0.1716, so truncation error is ~1.3e-14 (was ~1e-9 at z = 1/3).
+    double poly = z * (2.0 + z2 * (0.6666666666666666 + z2 * (0.4 + z2 * (0.2857142857142857 + z2 * (0.2222222222222222 + z2 * (0.18181818181818182 + z2 * (0.15384615384615385 + z2 * 0.13333333333333333)))))));
     return poly + (double)k * 0.6931471805599453;
+}
+
+/* sqrt with exponent normalization: Newton from a start within 4x of the root.
+ * The old 8-iteration-from-val version only converged when val/root < 256,
+ * so sqrt(1e300) returned 3.9e297 instead of 1e150. */
+static double local_sqrt(double val) {
+    if (val < 0.0) return calc_nan();
+    if (val == 0.0) return 0.0;
+    union { double d; uint64_t i; } u;
+    u.d = val;
+    int k = ((u.i >> 52) & 0x7FF) - 1023;
+    if (k == 1024) return val; // +Inf -> Inf, NaN -> NaN (not 2^512!)
+    if (k == -1023) {
+        // denormal: scale up by 2^52, recurse, scale back by 2^-26
+        return local_sqrt(val * 4503599627370496.0) * 1.52587890625e-08;
+    }
+    u.i = (u.i & 0x000FFFFFFFFFFFFFULL) | 0x3FF0000000000000ULL;
+    double m = u.d;
+    if (k & 1) m *= 2.0;                 // m in [1, 4)
+    double r = m;                        // start within 4x of sqrt(m)
+    for (int i = 0; i < 8; i++) r = 0.5 * (r + m / r);
+    int half = k >> 1;                   // floor(k/2)
+    if (r >= 2.0) { r *= 0.5; half++; }  // Newton can round r up to exactly 2.0
+    union { double d; uint64_t i; } res;
+    res.d = r;                           // r in [1, 2)
+    res.i = (res.i & 0x000FFFFFFFFFFFFFULL) | ((uint64_t)(1023 + half) << 52);
+    return res.d;
 }
 
 static double local_rand(void) {
@@ -154,11 +237,7 @@ static double local_randn(void) {
     double val = -2.0 * ln_u1;
     double r = 0.0;
     if (val > 0.0) {
-        double sq = val;
-        for (int i = 0; i < 8; ++i) {
-            sq = 0.5 * (sq + val / sq);
-        }
-        r = sq;
+        r = local_sqrt(val);
     }
     double theta = 2.0 * PI * u2;
     return r * local_cos(theta);
@@ -353,6 +432,7 @@ static double parse_number(Tokenizer* tok, CalculatorState* state, bool* success
 static double parse_unary(Tokenizer* tok, CalculatorState* state, bool* success);
 static double parse_grouping(Tokenizer* tok, CalculatorState* state, bool* success);
 static double parse_binary(Tokenizer* tok, CalculatorState* state, double left, bool* success);
+static double parse_implicit_mul(Tokenizer* tok, CalculatorState* state, double left, bool* success);
 static double parse_identifier(Tokenizer* tok, CalculatorState* state, bool* success);
 static double parse_factorial(Tokenizer* tok, CalculatorState* state, double left, bool* success);
 static double parse_unary_sqrt(Tokenizer* tok, CalculatorState* state, bool* success);
@@ -388,12 +468,12 @@ static const ParseRule rules[] = {
     { NULL,             parse_binary, PREC_FACTOR },
     // TOKEN_POWER (exponentiation right-associative, highest precedence)
     { NULL,             parse_binary, PREC_UNARY },
-    // TOKEN_LPAREN
-    { parse_grouping,   NULL,         PREC_NONE },
+    // TOKEN_LPAREN (also implicit multiplication: 2(3+4))
+    { parse_grouping,   parse_implicit_mul, PREC_FACTOR },
     // TOKEN_RPAREN
     { NULL,             NULL,         PREC_NONE },
-    // TOKEN_IDENTIFIER
-    { parse_identifier, NULL,         PREC_NONE },
+    // TOKEN_IDENTIFIER (also implicit multiplication: 2x, 3sin(x))
+    { parse_identifier, parse_implicit_mul, PREC_FACTOR },
     // TOKEN_COMMA
     { NULL,             NULL,         PREC_NONE },
     // TOKEN_EQUALS
@@ -438,28 +518,15 @@ static double parse_grouping(Tokenizer* tok, CalculatorState* state, bool* succe
     return val;
 }
 
+static double local_atan(double x); // forward: local_asin uses the atan reduction
+
 static double local_asin(double x) {
     if (x < -1.0 || x > 1.0) return calc_nan();
-    double abs_x = x < 0.0 ? -x : x;
-    if (abs_x < 1e-8) return x;
-    
-    double res;
-    if (abs_x <= 0.5) {
-        double x2 = abs_x * abs_x;
-        res = abs_x * (1.0 + x2 * (0.16666666666666666 + x2 * (0.075 + x2 * (0.04464285714285714 + x2 * 0.030381944444444444))));
-    } else {
-        double rem = 0.5 * (1.0 - abs_x);
-        double u = rem;
-        if (rem > 0.0) {
-            for (int i = 0; i < 8; i++) u = 0.5 * (u + rem / u);
-        } else {
-            u = 0.0;
-        }
-        double u2 = u * u;
-        double asin_u = u * (1.0 + u2 * (0.16666666666666666 + u2 * (0.075 + u2 * (0.04464285714285714 + u2 * 0.030381944444444444))));
-        res = PI / 2.0 - 2.0 * asin_u;
-    }
-    return x < 0.0 ? -res : res;
+    if (x == 0.0) return 0.0;
+    // asin(x) = atan(x / sqrt(1 - x^2)): the direct Taylor series converges
+    // too slowly near |x| = 0.5+ (was off by 1.36e-5 at x = 0.5). The atan
+    // path rides on the accurate two-pivot atan reduction instead.
+    return local_atan(x / local_sqrt(1.0 - x * x));
 }
 
 static double local_acos(double x) {
@@ -469,32 +536,84 @@ static double local_acos(double x) {
 
 static double local_atan(double x) {
     double abs_x = x < 0.0 ? -x : x;
-    double res;
-    if (abs_x <= 1.0) {
-        double x2 = abs_x * abs_x;
-        res = abs_x * (1.0 + x2 * (-0.3333333333333333 + x2 * (0.2 + x2 * (-0.14285714285714285 + x2 * (0.1111111111111111 + x2 * -0.09090909090909091)))));
-    } else {
-        double inv_x = 1.0 / abs_x;
-        double inv_x2 = inv_x * inv_x;
-        double atan_inv = inv_x * (1.0 + inv_x2 * (-0.3333333333333333 + inv_x2 * (0.2 + inv_x2 * (-0.14285714285714285 + inv_x2 * (0.1111111111111111 + inv_x2 * -0.09090909090909091)))));
-        res = PI / 2.0 - atan_inv;
+    // Reduction pivots: tan(PI/6) = 1/sqrt(3), tan(PI/12) = 2 - sqrt(3).
+    // atan(a) - atan(b) = atan((a - b) / (1 + a*b)) keeps the series argument
+    // bounded by tan(PI/12) ~ 0.268, where 7 terms are accurate to ~1e-11.
+    const double c1 = 0.5773502691896257645091487805;
+    const double c2 = 0.2679491924311227064725536585;
+    bool reciprocal = false;
+    if (abs_x > 1.0) {
+        reciprocal = true;   // atan(x) = PI/2 - atan(1/x), pull the argument below 1
+        abs_x = 1.0 / abs_x;
     }
+    double offset = 0.0;
+    if (abs_x > c2) {
+        if (abs_x > c1) {
+            offset = PI / 6.0;                    // atan(x) = PI/6 + atan((x - c1)/(1 + c1*x))
+            abs_x = (abs_x - c1) / (1.0 + c1 * abs_x);
+        } else {
+            offset = PI / 12.0;                   // atan(x) = PI/12 + atan((x - c2)/(1 + c2*x))
+            abs_x = (abs_x - c2) / (1.0 + c2 * abs_x);
+        }
+    }
+    double x2 = abs_x * abs_x;
+    // atan series through x^19: worst-case error ~4.6e-14 at the reduction
+    // pivot (was ~1e-11, visible as atan(1) being off at the 11th digit).
+    double series = abs_x * (1.0 + x2 * (-0.3333333333333333 + x2 * (0.2 + x2 * (-0.14285714285714285 + x2 * (0.1111111111111111 + x2 * (-0.09090909090909091 + x2 * (0.07692307692307693 + x2 * (-0.06666666666666667 + x2 * (0.058823529411764705 + x2 * -0.05263157894736842)))))))));
+    double res = reciprocal ? (PI / 2.0 - (offset + series)) : (offset + series);
     return x < 0.0 ? -res : res;
 }
 
 static double local_pow(double base, double exp) {
     if (exp == 0.0) return 1.0;
     if (base == 0.0) return 0.0;
-    if (base < 0.0) {
+    if (base != base || exp != exp) return calc_nan(); // NaN: the int64 cast below is UB
+    // Integer exponent fast path: exponentiation by squaring.
+    // 5^2 == 25.0 exactly, while exp(2*ln(5)) gave 24.9999999890547.
+    // Bounds keep the int64 cast well inside defined territory (the old
+    // code cast unguarded and hit UB for |exp| > 2^63).
+    if (exp > -9.0e18 && exp < 9.0e18) {
         int64_t n = (int64_t)exp;
         if ((double)n == exp) {
-            double res = local_pow(-base, exp);
-            if (n & 1) return -res;
-            return res;
+            if (base < 0.0) {
+                double res = local_pow(-base, exp);
+                return (n & 1) ? -res : res;
+            }
+            int64_t e = n < 0 ? -n : n;
+            double r = 1.0;
+            double b = base;
+            while (e > 0) {
+                if (e & 1) r *= b;
+                b *= b;
+                e >>= 1;
+            }
+            return n < 0 ? 1.0 / r : r;
         }
-        return calc_nan();
     }
+    if (base < 0.0) return calc_nan(); // fractional power of a negative
     return local_exp(exp * simple_ln(base));
+}
+
+static double local_abs(double x) {
+    return x < 0.0 ? -x : x;
+}
+
+static double local_floor(double x) {
+    if (x != x) return x;                    // NaN passthrough
+    if (x >= 9.0e18 || x <= -9.0e18) return x; // already integral, avoid UB cast
+    int64_t n = (int64_t)x;
+    double d = (double)n;
+    if (d > x) d -= 1.0;                     // negative non-integral truncates up
+    return d;
+}
+
+static double local_ceil(double x) {
+    if (x != x) return x;
+    if (x >= 9.0e18 || x <= -9.0e18) return x;
+    int64_t n = (int64_t)x;
+    double d = (double)n;
+    if (d < x) d += 1.0;
+    return d;
 }
 
 static double parse_factorial(Tokenizer* tok, CalculatorState* state, double left, bool* success) {
@@ -523,15 +642,10 @@ static double parse_unary_sqrt(Tokenizer* tok, CalculatorState* state, bool* suc
         *success = false;
         return 0.0;
     }
-    double res = val;
-    if (val > 0.0) {
-        for (int i = 0; i < 8; i++) res = 0.5 * (res + val / res);
-    }
-    return res;
+    return local_sqrt(val);
 }
 
-static double parse_binary(Tokenizer* tok, CalculatorState* state, double left, bool* success) {
-    Token op = tokenizer_consume(tok);
+static double parse_binary(Tokenizer* tok, CalculatorState* state, double left, bool* success) {    Token op = tokenizer_consume(tok);
     ParseRule rule = get_rule(op.type);
     double right = parse_precedence(tok, state, (Precedence)(rule.precedence + 1), success);
     if (!*success) return 0.0;
@@ -571,6 +685,15 @@ static double parse_binary(Tokenizer* tok, CalculatorState* state, double left, 
             *success = false;
             return 0.0;
     }
+}
+
+/* Implicit multiplication: "2(3+4)" -> 2*(3+4), "2x" -> 2*x, "2sin(x)" -> 2*sin(x).
+ * Right operand parses at PREC_UNARY so it binds exactly like an explicit '*'
+ * (whose right operand also parses at PREC_UNARY). */
+static double parse_implicit_mul(Tokenizer* tok, CalculatorState* state, double left, bool* success) {
+    double right = parse_precedence(tok, state, PREC_UNARY, success);
+    if (!*success) return 0.0;
+    return left * right;
 }
 
 static double parse_identifier(Tokenizer* tok, CalculatorState* state, bool* success) {
@@ -801,10 +924,13 @@ static double parse_identifier(Tokenizer* tok, CalculatorState* state, bool* suc
             return local_randn();
         }
 
-        // Statistical functions: mean, median, var, cov, corr
+        // Statistical functions: mean, median, var, std, min, max, cov, corr
         if ((id_tok.length == 4 && mystrncmp(id_tok.start, "mean", 4) == 0) ||
             (id_tok.length == 6 && mystrncmp(id_tok.start, "median", 6) == 0) ||
             (id_tok.length == 3 && mystrncmp(id_tok.start, "var", 3) == 0) ||
+            (id_tok.length == 3 && mystrncmp(id_tok.start, "std", 3) == 0) ||
+            (id_tok.length == 3 && mystrncmp(id_tok.start, "min", 3) == 0) ||
+            (id_tok.length == 3 && mystrncmp(id_tok.start, "max", 3) == 0) ||
             (id_tok.length == 3 && mystrncmp(id_tok.start, "cov", 3) == 0) ||
             (id_tok.length == 4 && mystrncmp(id_tok.start, "corr", 4) == 0)) {
             
@@ -852,7 +978,34 @@ static double parse_identifier(Tokenizer* tok, CalculatorState* state, bool* suc
                     double diff = args[i] - mean_val;
                     sq_sum += diff * diff;
                 }
-                return sq_sum / (arg_count - 1);
+                return sq_sum / (arg_count - 1);  // sample variance (n-1)
+            } else if (id_tok.length == 3 && mystrncmp(id_tok.start, "std", 3) == 0) {
+                if (arg_count <= 1) return 0.0;
+                double sum = 0.0;
+                for (int i = 0; i < arg_count; i++) sum += args[i];
+                double mean_val = sum / arg_count;
+                double sq_sum = 0.0;
+                for (int i = 0; i < arg_count; i++) {
+                    double diff = args[i] - mean_val;
+                    sq_sum += diff * diff;
+                }
+                double v = sq_sum / (arg_count - 1);  // sample std (matches var())
+                if (v <= 0.0) return 0.0;
+                return local_sqrt(v);
+            } else if (id_tok.length == 3 && mystrncmp(id_tok.start, "min", 3) == 0) {
+                if (arg_count == 0) return 0.0;
+                double m = args[0];
+                for (int i = 1; i < arg_count; i++) {
+                    if (args[i] < m) m = args[i];
+                }
+                return m;
+            } else if (id_tok.length == 3 && mystrncmp(id_tok.start, "max", 3) == 0) {
+                if (arg_count == 0) return 0.0;
+                double m = args[0];
+                for (int i = 1; i < arg_count; i++) {
+                    if (args[i] > m) m = args[i];
+                }
+                return m;
             } else if (id_tok.length == 3 && mystrncmp(id_tok.start, "cov", 3) == 0) {
                 if (arg_count < 4 || (arg_count % 2 != 0)) {
                     *success = false;
@@ -896,12 +1049,7 @@ static double parse_identifier(Tokenizer* tok, CalculatorState* state, bool* suc
                 }
                 if (var_x_sum == 0.0 || var_y_sum == 0.0) return 0.0;
                 double denom_val = var_x_sum * var_y_sum;
-                double denom_sqrt = denom_val;
-                if (denom_val > 0.0) {
-                    for (int i = 0; i < 8; i++) {
-                        denom_sqrt = 0.5 * (denom_sqrt + denom_val / denom_sqrt);
-                    }
-                }
+                double denom_sqrt = denom_val > 0.0 ? local_sqrt(denom_val) : 0.0;
                 return cov_sum / denom_sqrt;
             }
         }
@@ -979,11 +1127,25 @@ static double parse_identifier(Tokenizer* tok, CalculatorState* state, bool* suc
             double arg = parse_precedence(tok, state, PREC_NONE, success);
             if (tokenizer_consume(tok).type != TOKEN_RPAREN) { *success = false; return 0.0; }
             if (arg < 0.0) { *success = false; return 0.0; }
-            double res = arg;
-            if (arg > 0.0) {
-                for (int i = 0; i < 8; i++) res = 0.5 * (res + arg / res);
-            }
-            return res;
+            return local_sqrt(arg);
+        }
+        // abs(x)
+        if (id_tok.length == 3 && mystrncmp(id_tok.start, "abs", 3) == 0) {
+            double arg = parse_precedence(tok, state, PREC_NONE, success);
+            if (tokenizer_consume(tok).type != TOKEN_RPAREN) { *success = false; return 0.0; }
+            return local_abs(arg);
+        }
+        // floor(x)
+        if (id_tok.length == 5 && mystrncmp(id_tok.start, "floor", 5) == 0) {
+            double arg = parse_precedence(tok, state, PREC_NONE, success);
+            if (tokenizer_consume(tok).type != TOKEN_RPAREN) { *success = false; return 0.0; }
+            return local_floor(arg);
+        }
+        // ceil(x)
+        if (id_tok.length == 4 && mystrncmp(id_tok.start, "ceil", 4) == 0) {
+            double arg = parse_precedence(tok, state, PREC_NONE, success);
+            if (tokenizer_consume(tok).type != TOKEN_RPAREN) { *success = false; return 0.0; }
+            return local_ceil(arg);
         }
         // fact(x) or factorial(x)
         if ((id_tok.length == 4 && mystrncmp(id_tok.start, "fact", 4) == 0) ||
@@ -1001,8 +1163,12 @@ static double parse_identifier(Tokenizer* tok, CalculatorState* state, bool* suc
         // 2.x Fallback to plugin custom functions
         if (state && state->custom_lookup) {
             char fn_name[16];
-            if (id_tok.length < 16U) {
-                for (uint32_t i = 0; i < id_tok.length; i++) fn_name[i] = id_tok.start[i];
+            if (id_tok.length > 0 && id_tok.length < 16U) {
+                // Explicit dual bound: the < 16U guard alone trips GCC's
+                // -Wstringop-overflow path analysis under some inlining.
+                for (uint32_t i = 0; i < (uint32_t)id_tok.length && i < sizeof(fn_name) - 1; i++) {
+                    fn_name[i] = id_tok.start[i];
+                }
                 fn_name[id_tok.length] = '\0';
                 void* custom_fn_ptr = state->custom_lookup(state->custom_lookup_ctx, fn_name);
                 if (custom_fn_ptr) {
@@ -1026,6 +1192,9 @@ static double parse_identifier(Tokenizer* tok, CalculatorState* state, bool* suc
     if (!found) {
         if (id_tok.length == 2 && id_tok.start[0] == 'p' && id_tok.start[1] == 'i') {
             return 3.141592653589793;
+        } else if (id_tok.length == 3 &&
+                   id_tok.start[0] == 'p' && id_tok.start[1] == 'h' && id_tok.start[2] == 'i') {
+            return 1.6180339887498948482;  // phi: golden ratio
         } else if (id_tok.length == 1 && id_tok.start[0] == 'e') {
             return 2.718281828459045;
         } else if (id_tok.length == 3 &&

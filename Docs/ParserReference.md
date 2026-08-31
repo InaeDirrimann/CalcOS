@@ -26,7 +26,7 @@ evaluated left-to-right with standard mathematical precedence.
 | `atan(x)` | Arc tangent | |
 | `ln(x)` | Natural log | `ln(e)` = 1 |
 | `log10(x)` | Log base 10 | `log10(100)` = 2 |
-| `sqrt(x)` | Square root | `sqrt(-4)` = 2i |
+| `sqrt(x)` | Square root | `sqrt(9)` = 3 |
 | `fact(n)` | Factorial | `fact(5)` = 120 |
 | `abs(x)` | Absolute value | |
 | `rand()` | Uniform [0,1) via xoshiro256++ | |
@@ -54,4 +54,7 @@ x = 5
 x^2 + 2*x + 1   -> 36
 ```
 
-Complex number literals: append `i` to a number: `3 + 4i`, `2i`, `-1i`.
+Complex number literals (append `i` to a number: `3 + 4i`, `2i`, `-1i`) and
+complex arithmetic are currently supported in the RPN evaluation path (see the
+ShuntingYard/experimental parser and `test_parse`), not in the standard
+expression parser — there `sqrt(-4)` is a domain error.

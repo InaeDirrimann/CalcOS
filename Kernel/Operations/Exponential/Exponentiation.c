@@ -99,26 +99,12 @@ void exp_scalar(CalculatorState* state, const double* a, const double* b, double
     }
 }
 
-void exp_sse(CalculatorState* state, const double* a, const double* b, double* result, uint32_t count) {
-    exp_scalar(state, a, b, result, count);
-}
-
-void exp_avx2(CalculatorState* state, const double* a, const double* b, double* result, uint32_t count) {
-    exp_scalar(state, a, b, result, count);
-}
-
-void exp_neon(CalculatorState* state, const double* a, const double* b, double* result, uint32_t count) {
-    exp_scalar(state, a, b, result, count);
-}
-
+// NOTE: no fake "_sse/_avx2/_neon" wrappers here anymore. pow(a,b) is
+// branch-heavy per element (negative base, integer-exponent check, NaN
+// propagation, domain flags), so a vectorized lane would need masks for
+// every branch -- more instructions than it saves. When a real bulk-pow
+// use case shows up, vectorize with lane masks, not with forwarding stubs.
 void execute_exponentiation(CalculatorState* state, const double* a, const double* b, double* result, uint32_t count, const CPUFeatures* features) {
-    if (features->has_neon) {
-        exp_neon(state, a, b, result, count);
-    } else if (features->has_avx2) {
-        exp_avx2(state, a, b, result, count);
-    } else if (features->has_sse2) {
-        exp_sse(state, a, b, result, count);
-    } else {
-        exp_scalar(state, a, b, result, count);
-    }
+    (void)features;
+    exp_scalar(state, a, b, result, count);
 }

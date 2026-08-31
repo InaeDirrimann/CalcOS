@@ -435,8 +435,11 @@ bool bigint_div_mod(const BigInt* a, const BigInt* b, BigInt* quotient, BigInt* 
         BigInt ma = *a, mb = *b;
         ma.negative = false; mb.negative = false;
         if (bigint_compare(&ma, &mb) < 0) {
+            // a may alias quotient (bigint_to_string calls div_mod(&temp, &ten, &temp, &rem)),
+            // so snapshot the dividend BEFORE zeroing the quotient slot.
+            BigInt rem_snapshot = *a;
             bigint_zero(quotient);
-            *remainder = *a;
+            *remainder = rem_snapshot;
             bigint_normalize(remainder);
             return true;
         }

@@ -1,25 +1,15 @@
 #include "Cosine.h"
+#include "../../Core/CPU/SIMD.h"
 
-#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+#ifdef COMPILER_X86
 #include <immintrin.h>
-#define COMPILER_X86
 #endif
-
-#if defined(__ARM_NEON) || defined(__aarch64__) || defined(_M_ARM) || defined(_M_ARM64)
+#ifdef COMPILER_ARM
 #include <arm_neon.h>
-#define COMPILER_ARM
 #endif
 
 #define PI 3.14159265358979323846
 #define INV_PI 0.31830988618379067154
-
-#if defined(__GNUC__) || defined(__clang__)
-#define TARGET_AVX2 __attribute__((target("avx2")))
-#define TARGET_SSE2 __attribute__((target("sse2")))
-#else
-#define TARGET_AVX2
-#define TARGET_SSE2
-#endif
 
 static inline double approx_cos_scalar(double x) {
     double k_d = (double)((int64_t)(x * INV_PI + (x >= 0.0 ? 0.5 : -0.5)));
@@ -40,7 +30,7 @@ void cos_scalar(CalculatorState* state, const double* a, double* result, uint32_
     }
 }
 
-TARGET_SSE2 void cos_sse(CalculatorState* state, const double* a, double* result, uint32_t count) {
+TARGET_SSE4_1 void cos_sse(CalculatorState* state, const double* a, double* result, uint32_t count) {
     (void)state;
 #ifdef COMPILER_X86
     uint32_t i = 0;
@@ -60,7 +50,10 @@ TARGET_SSE2 void cos_sse(CalculatorState* state, const double* a, double* result
         __m128d vx = _mm_loadu_pd(&a[i]);
         __m128d v_prod = _mm_mul_pd(vx, v_inv_pi);
         __m128d v_offset = _mm_blendv_pd(v_neg_half, v_half, _mm_cmpge_pd(vx, v_zero));
-        __m128d v_k = _mm_round_pd(_mm_add_pd(v_prod, v_offset), _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
+        // truncate (prod +/- 0.5), matching the scalar path's (int64_t) cast.
+        // TO_NEAREST_INT ties-to-even misfires at exact half-integers: for x = pi,
+        // prod = 1.0, prod + 0.5 = 1.5 -> k = 2 -> xr = -pi -> 4.7e-4 Taylor error.
+        __m128d v_k = _mm_round_pd(_mm_add_pd(v_prod, v_offset), _MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC);
 
         __m128d vxr = _mm_sub_pd(vx, _mm_mul_pd(v_k, v_pi));
         __m128d vz2 = _mm_mul_pd(vxr, vxr);
@@ -110,7 +103,10 @@ TARGET_AVX2 void cos_avx2(CalculatorState* state, const double* a, double* resul
         __m256d vx = _mm256_loadu_pd(&a[i]);
         __m256d v_prod = _mm256_mul_pd(vx, v_inv_pi);
         __m256d v_offset = _mm256_blendv_pd(v_neg_half, v_half, _mm256_cmp_pd(vx, v_zero, _CMP_GE_OQ));
-        __m256d v_k = _mm256_round_pd(_mm256_add_pd(v_prod, v_offset), _MM_FROUND_TO_NEAREST_INT |_MM_FROUND_NO_EXC);
+        // truncate (prod +/- 0.5), matching the scalar path's (int64_t) cast.
+        // TO_NEAREST_INT ties-to-even misfires at exact half-integers: for x = pi,
+        // prod = 1.0, prod + 0.5 = 1.5 -> k = 2 -> xr = -pi -> 4.7e-4 Taylor error.
+        __m256d v_k = _mm256_round_pd(_mm256_add_pd(v_prod, v_offset), _MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC);
 
         __m256d vxr = _mm256_sub_pd(vx, _mm256_mul_pd(v_k, v_pi));
         __m256d vz2 = _mm256_mul_pd(vxr, vxr);
@@ -156,11 +152,11 @@ void cos_neon(CalculatorState* state, const double* a, double* result, uint32_t 
         float64x2_t vz2 = vmulq_f64(vxr, vxr);
 
         float64x2_t vy = vmulq_n_f64(vz2, -2.75573192239859e-7);
-        vy = vmulq_f64(vz2, vaddq_n_f64(vy, 0.0000248015873015873));
-        vy = vmulq_f64(vz2, vaddq_n_f64(vy, -0.0013888888888888889));
-        vy = vmulq_f64(vz2, vaddq_n_f64(vy, 0.041666666666666664));
-        vy = vmulq_f64(vz2, vaddq_n_f64(vy, -0.5));
-        vy = vaddq_n_f64(vy, 1.0);
+        vy = vmulq_f64(vz2, vaddq_f64(vy, vdupq_n_f64(0.0000248015873015873)));
+        vy = vmulq_f64(vz2, vaddq_f64(vy, vdupq_n_f64(-0.0013888888888888889)));
+        vy = vmulq_f64(vz2, vaddq_f64(vy, vdupq_n_f64(0.041666666666666664)));
+        vy = vmulq_f64(vz2, vaddq_f64(vy, vdupq_n_f64(-0.5)));
+        vy = vaddq_f64(vy, vdupq_n_f64(1.0));
 
         int64x2_t vi_k = vcvtq_s64_f64(v_k);
         int64x2_t v_odd = vandq_s64(vi_k, vdupq_n_s64(1));
@@ -182,7 +178,7 @@ void execute_cosine(CalculatorState* state, const double* a, double* result, uin
         cos_neon(state, a, result, count);
     } else if (features->has_avx2) {
         cos_avx2(state, a, result, count);
-    } else if (features->has_sse2) {
+    } else if (features->has_sse4_1) {
         cos_sse(state, a, result, count);
     } else {
         cos_scalar(state, a, result, count);

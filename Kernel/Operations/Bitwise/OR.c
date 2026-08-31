@@ -1,14 +1,12 @@
 #include "OR.h"
 #include <string.h>
+#include "../../Core/CPU/SIMD.h"
 
-#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+#ifdef COMPILER_X86
 #include <immintrin.h>
-#define COMPILER_X86
 #endif
-
-#if defined(__ARM_NEON) || defined(__aarch64__) || defined(_M_ARM) || defined(_M_ARM64)
+#ifdef COMPILER_ARM
 #include <arm_neon.h>
-#define COMPILER_ARM
 #endif
 
 static inline double bitwise_or_scalar_single(double a, double b) {
@@ -28,7 +26,7 @@ void or_scalar(CalculatorState* state, const double* a, const double* b, double*
     }
 }
 
-void or_sse(CalculatorState* state, const double* a, const double* b, double* result, uint32_t count) {
+TARGET_SSE2 void or_sse(CalculatorState* state, const double* a, const double* b, double* result, uint32_t count) {
     (void)state;
 #ifdef COMPILER_X86
     uint32_t i = 0;
@@ -46,7 +44,7 @@ void or_sse(CalculatorState* state, const double* a, const double* b, double* re
 #endif
 }
 
-void or_avx2(CalculatorState* state, const double* a, const double* b, double* result, uint32_t count) {
+TARGET_AVX2 void or_avx2(CalculatorState* state, const double* a, const double* b, double* result, uint32_t count) {
     (void)state;
 #ifdef COMPILER_X86
     uint32_t i = 0;

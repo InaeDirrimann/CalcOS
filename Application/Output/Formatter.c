@@ -98,7 +98,7 @@ size_t format_string_va(char* buf, size_t buf_size, const char* fmt, va_list arg
                 case 'i': {
                     int64_t val = long_long ? va_arg(args, long long) : (int64_t)va_arg(args, int);
                     char tmp[32];
-                    size_t len = print_int(tmp, val, 10, false);
+                    print_int(tmp, val, 10, false);
                     char tmp_commas[64];
                     add_thousands_commas(tmp_commas, sizeof(tmp_commas), tmp);
                     for (size_t i = 0; tmp_commas[i] != '\0' && write_idx < buf_size - 1; i++) {
@@ -110,7 +110,7 @@ size_t format_string_va(char* buf, size_t buf_size, const char* fmt, va_list arg
                 case 'u': {
                     uint64_t val = long_long ? va_arg(args, unsigned long long) : (uint64_t)va_arg(args, unsigned int);
                     char tmp[32];
-                    size_t len = print_int(tmp, (int64_t)val, 10, false);
+                    print_int(tmp, (int64_t)val, 10, false);
                     char tmp_commas[64];
                     add_thousands_commas(tmp_commas, sizeof(tmp_commas), tmp);
                     for (size_t i = 0; tmp_commas[i] != '\0' && write_idx < buf_size - 1; i++) {
@@ -133,7 +133,7 @@ size_t format_string_va(char* buf, size_t buf_size, const char* fmt, va_list arg
                 case 'f': {
                     double val = va_arg(args, double);
                     char tmp[64];
-                    size_t len = print_float(tmp, val, 6);
+                    print_float(tmp, val, 6);
                     char tmp_commas[128];
                     add_thousands_commas(tmp_commas, sizeof(tmp_commas), tmp);
                     for (size_t i = 0; tmp_commas[i] != '\0' && write_idx < buf_size - 1; i++) {

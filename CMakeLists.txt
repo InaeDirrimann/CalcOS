@@ -103,6 +103,7 @@ set_target_properties(calc_static PROPERTIES
     CLEAN_DIRECT_OUTPUT 1
 )
 
+
 # ---------------------------------------------------------
 # Shared Library
 # ---------------------------------------------------------
@@ -112,12 +113,50 @@ set_target_properties(calc_shared PROPERTIES
     CLEAN_DIRECT_OUTPUT 1
 )
 
+# ---------------------------------------------------------
+# Optional: Pascal Edition Tetris (TetrisAppPascal.pas)
+# ---------------------------------------------------------
+# OFF by default — Free Pascal isn't a hard dependency of this project.
+# Turn it on with `-DCALCOS_ENABLE_PASCAL_TETRIS=ON` to compile the
+# Turbo Pascal 7 port of Tetris and link it through the C bridge into
+# the same .appreg registry the C apps use.
+option(CALCOS_ENABLE_PASCAL_TETRIS "Build TetrisAppPascal.pas (Turbo Pascal edition) via Free Pascal" OFF)
+if(CALCOS_ENABLE_PASCAL_TETRIS)
+    find_program(FPC_EXECUTABLE fpc)
+    if(NOT FPC_EXECUTABLE)
+        message(FATAL_ERROR "CALCOS_ENABLE_PASCAL_TETRIS=ON but fpc was not found in PATH")
+    endif()
+    # -Mtp = Turbo Pascal 7 dialect, -Cg = PIC (links into PIE), -Fu = obj dir
+    add_custom_command(
+        OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/TetrisAppPascal.o
+        COMMAND ${FPC_EXECUTABLE} -Mtp -Cg
+                -Fu${CMAKE_CURRENT_SOURCE_DIR}/src/apps
+                -o${CMAKE_CURRENT_BINARY_DIR}/TetrisAppPascal.o
+                ${CMAKE_CURRENT_SOURCE_DIR}/src/apps/TetrisAppPascal.pas
+        DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/apps/TetrisAppPascal.pas
+        COMMENT "Compiling TetrisAppPascal.pas (Turbo Pascal 7 mode)"
+    )
+    set(PASCAL_TETRIS_OBJECT ${CMAKE_CURRENT_BINARY_DIR}/TetrisAppPascal.o)
+    foreach(target calc_static calc_shared)
+        target_sources(${target} PRIVATE
+            src/apps/TetrisAppPascalBridge.c
+            ${PASCAL_TETRIS_OBJECT}
+        )
+    endforeach()
+endif()
+
 # Include directories configuration
 foreach(target calc_static calc_shared)
     # include root so #include paths resolve from project root
     target_include_directories(${target} PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     )
+
+    # This CMakeLists is the host/simulator build (Target A). PLATFORM_HOST
+    # keeps kernel_log from falling into bare-metal COM1 port I/O (privileged
+    # inb/outb) and selects the host branches in disk_marshal. Embedded targets
+    # (ESP32 via idf.py, RPi, WASM) use their own build systems.
+    target_compile_definitions(${target} PRIVATE PLATFORM_HOST=1)
 
     # warnings: W3 on MSVC (W4 breaks third-party headers). Wall+Wextra+Werror on GCC/Clang.
     # -O3: let the compiler do its job. the SIMD dispatch is the bottleneck anyway.
@@ -128,12 +167,14 @@ foreach(target calc_static calc_shared)
     endif()
 
     # Apply AVX2 configurations
+    # NOTE: On GCC/Clang we deliberately do NOT pass -mavx2 globally. The AVX2
+    # kernels use per-function __attribute__((target("avx2"))) and are selected
+    # at runtime via CPUID dispatch. A global -mavx2 would let -O3 auto-vectorize
+    # the whole binary with AVX2 and SIGILL on older CPUs that lack the feature.
     if(CALC_ENABLE_AVX2)
         target_compile_definitions(${target} PRIVATE USE_AVX2=1)
         if(MSVC)
             target_compile_options(${target} PRIVATE /arch:AVX2)
-        else()
-            target_compile_options(${target} PRIVATE -mavx2)
         endif()
     endif()
 
@@ -144,8 +185,6 @@ foreach(target calc_static calc_shared)
             if(CMAKE_SIZEOF_VOID_P EQUAL 4)
                 target_compile_options(${target} PRIVATE /arch:SSE2)
             endif()
-        else()
-            target_compile_options(${target} PRIVATE -msse2)
         endif()
     endif()
 
@@ -188,6 +227,10 @@ target_link_libraries(calc_terminal PRIVATE calc_static)
 target_include_directories(calc_terminal PRIVATE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
 )
+# The host platform driver must define PLATFORM_HOST or the kernel's log
+# fallback tries bare-metal COM1 port I/O (privileged inb/outb) and SIGSEGVs
+# in user space. HOST_APP makes CPUID detection safe for non-bare-metal.
+target_compile_definitions(calc_terminal PRIVATE PLATFORM_HOST=1 HOST_APP=1)
 
 
 add_executable(test_complex_calc Tests/Unit/test_complex_calc.c)
@@ -204,6 +247,43 @@ add_executable(test_plugin_system Tests/Unit/TestPluginSystem.cpp)
 target_link_libraries(test_plugin_system PRIVATE calc_static)
 target_include_directories(test_plugin_system PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
 target_compile_definitions(test_plugin_system PRIVATE HOST_APP=1)
+
+# --- Additional unit tests (were in Tests/Unit but never wired into the build) ---
+add_executable(test_addition Tests/Unit/TestAddition.c)
+target_link_libraries(test_addition PRIVATE calc_static)
+target_include_directories(test_addition PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
+target_compile_definitions(test_addition PRIVATE HOST_APP=1)
+
+add_executable(test_subtraction Tests/Unit/TestSubtraction.c)
+target_link_libraries(test_subtraction PRIVATE calc_static)
+target_include_directories(test_subtraction PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
+target_compile_definitions(test_subtraction PRIVATE HOST_APP=1)
+
+add_executable(test_simd Tests/Unit/TestSIMD.c)
+target_link_libraries(test_simd PRIVATE calc_static)
+target_include_directories(test_simd PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
+target_compile_definitions(test_simd PRIVATE HOST_APP=1)
+
+add_executable(test_tokenizer Tests/Unit/TestTokenizer.c)
+target_link_libraries(test_tokenizer PRIVATE calc_static)
+target_include_directories(test_tokenizer PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
+
+add_executable(test_complex Tests/Unit/TestComplex.c)
+target_link_libraries(test_complex PRIVATE calc_static)
+target_include_directories(test_complex PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
+target_compile_definitions(test_complex PRIVATE HOST_APP=1)
+
+add_executable(test_complex_divzero Tests/Unit/TestComplexDivZero.c)
+target_link_libraries(test_complex_divzero PRIVATE calc_static)
+target_include_directories(test_complex_divzero PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
+
+add_executable(test_ist_canary Tests/Unit/TestISTCanary.c)
+target_link_libraries(test_ist_canary PRIVATE calc_static)
+target_include_directories(test_ist_canary PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
+
+add_executable(test_thread_local Tests/Unit/TestThreadLocalSymbols.c)
+target_link_libraries(test_thread_local PRIVATE calc_static)
+target_include_directories(test_thread_local PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
 
 # Dynamic Plugin Compilation & Staging Target
 add_library(sample_plugin SHARED Tests/Unit/SamplePlugin.cpp)
@@ -225,7 +305,7 @@ endif()
 
 # Apply CALC_TINY_MEM size optimizations globally to all targets
 if(CALC_TINY_MEM)
-    foreach(tgt calc_static calc_shared calc_terminal test_stats_rng test_parse test_complex_calc test_benchmark test_cpp_wrapper)
+    foreach(tgt calc_static calc_shared calc_terminal test_stats_rng test_parse test_complex_calc test_benchmark test_cpp_wrapper test_addition test_subtraction test_simd test_tokenizer test_complex test_complex_divzero test_ist_canary test_thread_local)
         if(TARGET ${tgt})
             target_compile_definitions(${tgt} PRIVATE CALC_TINY_MEM=1)
             if(MSVC)

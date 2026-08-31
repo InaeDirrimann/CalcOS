@@ -8,6 +8,7 @@ typedef struct {
     bool has_sse;
     bool has_sse2;
     bool has_sse3;
+    bool has_sse4_1;
     bool has_avx;
     bool has_avx2;
     bool has_fma;

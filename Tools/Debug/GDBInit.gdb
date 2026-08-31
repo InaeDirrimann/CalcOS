@@ -1,10 +1,12 @@
 # GDB Initialization Script for Bare Metal Calculator
+#
+# Load symbols for your kernel regardless of where the build landed:
+#   gdb -ex "symbol-file /path/to/kernel.elf" -x GDBInit.gdb
+# (the Tools/Debug/QEMU.sh script prints this exact command for you)
+# OR run this file from gdb and type: file <path/to/kernel.elf>
 
 # Connect to QEMU's remote gdb stub on localhost:1234
 target remote localhost:1234
-
-# Load the ELF symbols for debugging
-symbol-file Build/isofiles/boot/kernel.elf
 
 # Set architecture to 64-bit x86
 set architecture i386:x86-64
@@ -22,6 +24,8 @@ document show_regs
 end
 
 # Set a breakpoint at the kernel start
+# (pending allows it to resolve after the symbol file is loaded)
+set breakpoint pending on
 b kernel_main
 
 echo \n=== GDB Configured and Connected ===\n
